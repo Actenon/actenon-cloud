@@ -1,0 +1,20 @@
+prune .venv
+prune .pytest_cache
+prune .ruff_cache
+prune .mypy_cache
+prune .tox
+prune .nox
+prune .cache
+prune .idea
+prune .vscode
+prune __MACOSX
+prune build
+prune dist
+prune var
+prune action_control_plane.egg-info
+recursive-include app/pilot_ui/static *.css *.js
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
+global-exclude *.sqlite3
+global-exclude *.log

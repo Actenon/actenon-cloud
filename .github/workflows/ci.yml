@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "codex/**"
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Lint
+        run: python -m ruff check --no-cache app tests scripts
+
+      - name: Package Build Smoke
+        run: python -m build --sdist --wheel --outdir "$RUNNER_TEMP/dist"
+
+      - name: Docker Build Smoke
+        run: docker build -t action-control-plane:ci .
+
+      - name: Compose Config Smoke
+        run: |
+          cp .env.compose.example .env.compose
+          docker compose --env-file .env.compose config >/dev/null
+          rm .env.compose
+
+      - name: Migration Smoke
+        run: |
+          TMP_DIR="$(mktemp -d)"
+          ACTION_CONTROL_PLANE_ENVIRONMENT=test \
+          ACTION_CONTROL_PLANE_DATABASE_URL="sqlite+pysqlite:///$TMP_DIR/ci.db" \
+          ACTION_CONTROL_PLANE_EVIDENCE_STORAGE_ROOT="$TMP_DIR/evidence" \
+          ACTION_CONTROL_PLANE_ENABLE_DOCS=false \
+          python -m alembic upgrade head
+
+      - name: Test
+        run: python -m pytest -q -p no:cacheprovider
+
+      - name: Verify
+        run: bash scripts/verify.sh
+
+      - name: Judge
+        run: bash scripts/judge.sh

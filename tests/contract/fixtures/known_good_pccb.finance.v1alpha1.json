@@ -1,0 +1,47 @@
+{
+  "algorithm": "HS256",
+  "proof_payload_digest": "182f32499c3699fbdb5050406d8e706aa0eea476ff514125d5061581ee64f4df",
+  "signature": "uaFwp_EQGoDRrnSalKpre192rOzL90C8VrN0HI_4m0s",
+  "proof_payload": {
+    "proof_kind": "pccb",
+    "issuer": {
+      "name": "Actenon Cloud",
+      "uri": "https://actenon-cloud.local/issuer",
+      "trust_tier": "development_local"
+    },
+    "subject": {
+      "tenant_id": "tenant-contract-001",
+      "action_intent_record_id": "action-record-001",
+      "external_action_intent_id": "intent-contract-001"
+    },
+    "binding": {
+      "contract_version_ref": "open_execution_kernel.action_intent.finance.v1alpha1",
+      "action_intent_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "audience": "finance-ops.internal",
+      "scope": [
+        "finance.transfer.audit",
+        "finance.transfer.release"
+      ],
+      "scope_hash": "5a054f38f700d7b92b1bdcba90980d853c277d8c653e167c817e2dfd41bb02e7",
+      "nonce": "contract-fixture-nonce-001",
+      "issued_at": "2026-04-06T12:00:00+00:00",
+      "expires_at": "2026-04-06T12:15:00+00:00"
+    },
+    "governance": {
+      "policy_id": "policy-contract-001",
+      "policy_version": 1,
+      "decision_state": "approval_required",
+      "approval_state": "satisfied",
+      "evidence_state": "satisfied",
+      "matched_rule_id": "issue-after-controls"
+    },
+    "finance": {
+      "workflow_key": "payments.standard",
+      "action_type": "transfer",
+      "amount_minor": 800000,
+      "currency": "USD",
+      "source_account_ref": "acct-source-501",
+      "destination_account_ref": "acct-destination-501"
+    }
+  }
+}

@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-control-plane.local/schemas/control_plane/action-intent-submission-envelope.schema.json",
+  "title": "Actenon Cloud Intake Envelope",
+  "description": "Control-plane submission envelope for a kernel-owned Action Intent. The kernel_action_intent field is intentionally opaque here and must be validated against the pinned kernel contract referenced by kernel_contract_ref.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "submission_id",
+    "idempotency_key",
+    "requested_by",
+    "kernel_contract_ref",
+    "kernel_action_intent"
+  ],
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant scope for the control-plane request."
+    },
+    "submission_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Client-visible submission identifier."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 256,
+      "description": "Idempotency key used to deduplicate control-plane intake."
+    },
+    "requested_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal_type",
+        "principal_id"
+      ],
+      "properties": {
+        "principal_type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "service_principal",
+            "system"
+          ]
+        },
+        "principal_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workflow_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_pack_id": {
+          "type": "string"
+        },
+        "workflow_profile": {
+          "type": "string"
+        },
+        "requested_execution_window": {
+          "type": "string",
+          "description": "Opaque scheduling hint for future routing."
+        }
+      }
+    },
+    "kernel_contract_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_family",
+        "version_ref"
+      ],
+      "properties": {
+        "contract_family": {
+          "type": "string",
+          "enum": [
+            "action_intent"
+          ]
+        },
+        "version_ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Pinned reference to the published kernel Action Intent contract."
+        }
+      }
+    },
+    "kernel_action_intent": {
+      "type": "object",
+      "description": "Opaque canonical Action Intent payload. The control plane must validate this against the kernel-owned schema referenced by kernel_contract_ref and must not redefine the canonical field set locally."
+    },
+    "finance_routing_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional derived or caller-supplied routing metadata for finance-focused Release 1 workflows. This does not replace canonical kernel intent semantics.",
+      "properties": {
+        "action_class": {
+          "type": "string",
+          "enum": [
+            "payment",
+            "transfer",
+            "payout",
+            "collection",
+            "settlement_instruction",
+            "other_finance_action"
+          ]
+        },
+        "amount_minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "source_account_ref": {
+          "type": "string"
+        },
+        "destination_account_ref": {
+          "type": "string"
+        },
+        "risk_tier": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        }
+      }
+    },
+    "evaluation_context": {
+      "type": "object",
+      "description": "Optional deterministic context inputs for policy evaluation such as risk tier or evidence-present flags."
+    },
+    "client_tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "maxItems": 32
+    },
+    "external_reference": {
+      "type": "string",
+      "maxLength": 256
+    }
+  }
+}

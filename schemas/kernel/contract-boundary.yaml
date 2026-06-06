@@ -1,0 +1,61 @@
+version: "0.1.0"
+domain: action_control_plane
+notes:
+  - "This file does not define kernel schemas. It defines how the control plane treats kernel-owned contract families."
+  - "Actual kernel artifacts must be pinned from the separate open kernel repository once available."
+
+kernel_contract_families:
+  action_intent:
+    owner: open_execution_kernel
+    control_plane_handling: validate_and_store_by_reference
+    local_mutation_allowed: false
+    local_redefinition_allowed: false
+    expected_usage:
+      - intake_validation
+      - immutable_storage
+      - derived_finance_indexing
+
+  receipt:
+    owner: open_execution_kernel
+    control_plane_handling: ingest_and_index
+    local_mutation_allowed: false
+    local_redefinition_allowed: false
+    expected_usage:
+      - receipt_ingestion
+      - query_indexing
+      - reconciliation
+      - proof_packaging
+
+  proof_or_verifier_output:
+    owner: open_execution_kernel
+    control_plane_handling: reference_and_package
+    local_mutation_allowed: false
+    local_redefinition_allowed: false
+    expected_usage:
+      - proof_orchestration
+      - PCCB_packaging
+      - audit_linkage
+
+  execution_status:
+    owner: open_execution_kernel
+    control_plane_handling: observe_without_redefining
+    local_mutation_allowed: false
+    local_redefinition_allowed: false
+    expected_usage:
+      - coarse_execution_observation
+      - reconciliation
+
+control_plane_only_contracts:
+  - intake_submission_envelope
+  - policy_pack
+  - workflow_rule
+  - approval_request
+  - approval_decision
+  - evidence_object
+  - issued_proof_record
+  - signing_key_reference
+  - escrow_record
+  - replay_consumption_state
+  - provider_execution_hook
+  - reconciliation_record
+  - artifact_control_state
