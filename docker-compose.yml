@@ -1,0 +1,65 @@
+x-actenon-app: &actenon-app
+  build:
+    context: .
+  image: actenon-cloud:local
+  env_file:
+    - .env.compose
+  volumes:
+    - evidence_data:/var/lib/actenon-cloud/evidence
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${ACTION_CONTROL_PLANE_PILOT_POSTGRES_DB}
+      POSTGRES_USER: ${ACTION_CONTROL_PLANE_PILOT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${ACTION_CONTROL_PLANE_PILOT_POSTGRES_PASSWORD}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  migrate:
+    <<: *actenon-app
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - migrate
+    restart: "no"
+
+  app:
+    <<: *actenon-app
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - web
+    ports:
+      - "127.0.0.1:${ACTION_CONTROL_PLANE_PORT:-8000}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import os, sys, urllib.request
+          prefix = os.getenv("ACTION_CONTROL_PLANE_API_V1_PREFIX", "/api/v1").rstrip("/")
+          port = os.getenv("ACTION_CONTROL_PLANE_PORT", "8000")
+          url = f"http://127.0.0.1:{port}{prefix}/health/ready"
+          sys.exit(0 if urllib.request.urlopen(url, timeout=3).status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+volumes:
+  postgres_data:
+  evidence_data:

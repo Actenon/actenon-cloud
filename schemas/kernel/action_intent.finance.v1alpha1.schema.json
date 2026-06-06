@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-control-plane.local/schemas/kernel/action_intent.finance.v1alpha1.schema.json",
+  "title": "Pinned External Action Intent Contract (Finance v1alpha1)",
+  "description": "Local pinned copy of an external versioned Action Intent contract for finance-focused release-1 development. Replace this artifact with the published open kernel contract when it is available.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "intent_id",
+    "workflow_key",
+    "action_type",
+    "amount_minor",
+    "currency",
+    "source_account_ref",
+    "destination_account_ref"
+  ],
+  "properties": {
+    "intent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "payment",
+        "transfer",
+        "payout",
+        "collection",
+        "settlement_instruction"
+      ]
+    },
+    "amount_minor": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "source_account_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destination_account_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destination_country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "requested_execution_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "metadata": {
+      "type": "object",
+      "default": {}
+    }
+  }
+}

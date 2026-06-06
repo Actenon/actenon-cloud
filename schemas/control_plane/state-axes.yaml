@@ -1,0 +1,83 @@
+version: "0.1.0"
+domain: action_control_plane
+release_focus: finance_actions
+
+state_axes:
+  intake_state:
+    owner: control_plane
+    description: submission validation and admission state
+    values:
+      - RECEIVED
+      - VALIDATING
+      - ACCEPTED
+      - REJECTED
+      - VALIDATION_FAILED
+      - CANCELED
+
+  approval_state:
+    owner: control_plane
+    description: approval workflow progress
+    values:
+      - NOT_STARTED
+      - NOT_REQUIRED
+      - PENDING
+      - SATISFIED
+      - REJECTED
+      - EXPIRED
+      - CANCELED
+
+  proof_state:
+    owner: control_plane
+    description: proof or PCCB issuance progress
+    values:
+      - NOT_REQUESTED
+      - ELIGIBLE
+      - ISSUANCE_REQUESTED
+      - ISSUED
+      - FAILED
+      - REVOKED
+
+  execution_state:
+    owner: control_plane
+    description: coarse control-plane lifecycle around released capability and observed execution; not a replacement for kernel execution semantics
+    values:
+      - NOT_REQUESTED
+      - CAPABILITY_HELD
+      - CAPABILITY_RELEASED
+      - DISPATCH_REQUESTED
+      - DISPATCH_CONFIRMED
+      - RESULT_OBSERVED
+      - FAILURE_OBSERVED
+      - REVOKED
+      - QUARANTINED
+      - EXPIRED
+
+  escrow_state:
+    owner: control_plane
+    description: capability release custody state bound to an issued proof
+    values:
+      - HELD
+      - RELEASED
+      - CONSUMED
+      - REVOKED
+      - QUARANTINED
+      - EXPIRED
+
+  receipt_state:
+    owner: control_plane
+    description: receipt ingestion and indexing state
+    values:
+      - NONE
+      - RECEIVED
+      - INDEXED
+      - RECONCILED
+      - SUPERSEDED
+
+  artifact_control_state:
+    owner: control_plane
+    description: governance posture applied without mutating canonical artifacts
+    values:
+      - ACTIVE
+      - QUARANTINED
+      - RELEASED
+      - REVOKED

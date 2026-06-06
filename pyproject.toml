@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "actenon-cloud"
+version = "0.1.0"
+description = "Pilot-stage managed control layer for governed invoice payment execution"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.14,<2.0",
+  "fastapi>=0.115,<1.0",
+  "jsonschema>=4.23,<5.0",
+  "psycopg[binary]>=3.2,<4.0",
+  "pydantic-settings>=2.6,<3.0",
+  "python-multipart>=0.0.18,<1.0",
+  "rfc8785>=0.1.4,<1.0",
+  "sqlalchemy>=2.0,<3.0",
+  "uvicorn>=0.32,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "actenon-kernel[asymmetric] @ git+https://github.com/Actenon/actenon.git@c7d3f0a53209dd0deee11d9042cc08c16bba6ed8",
+  "build>=1.2,<2.0",
+  "cryptography>=42,<49",
+  "httpx>=0.28,<1.0",
+  "pytest>=8.3,<9.0",
+  "ruff>=0.8,<1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.pilot_ui" = ["static/*.css", "static/*.js"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "S"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]

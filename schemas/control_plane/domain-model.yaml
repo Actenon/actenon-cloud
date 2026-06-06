@@ -1,0 +1,258 @@
+version: "0.1.0"
+domain: action_control_plane
+release_focus: finance_actions
+notes:
+  - "Control-plane model only. Canonical execution and verifier semantics remain in the open kernel."
+  - "Kernel Action Intent payloads and receipts are stored by reference and digest."
+
+entities:
+  Tenant:
+    owner: control_plane
+    scope: primary_isolation_boundary
+    key_fields:
+      - tenant_id
+      - display_name
+      - status
+      - finance_profile
+
+  User:
+    owner: control_plane
+    scope: identity
+    key_fields:
+      - user_id
+      - identity_provider_subject
+      - email
+      - status
+
+  Role:
+    owner: control_plane
+    scope: authorization
+    key_fields:
+      - role_id
+      - tenant_id
+      - name
+      - permissions
+      - approval_entitlements
+
+  TenantMembership:
+    owner: control_plane
+    scope: authorization
+    key_fields:
+      - membership_id
+      - tenant_id
+      - user_id
+      - role_ids
+      - membership_status
+
+  PolicyPack:
+    owner: control_plane
+    scope: workflow_policy
+    key_fields:
+      - policy_pack_id
+      - tenant_id
+      - version
+      - status
+      - finance_action_classes
+
+  WorkflowRule:
+    owner: control_plane
+    scope: workflow_policy
+    key_fields:
+      - workflow_rule_id
+      - policy_pack_id
+      - rule_type
+      - condition_expression
+      - outcome_definition
+
+  ActionIntentRecord:
+    owner: control_plane
+    scope: intake_anchor
+    kernel_dependencies:
+      - kernel_action_intent_contract
+    key_fields:
+      - action_intent_record_id
+      - tenant_id
+      - submission_id
+      - idempotency_key
+      - submitted_by_principal_id
+      - kernel_contract_ref
+      - kernel_action_intent_payload_ref
+      - kernel_action_intent_digest
+      - finance_action_class
+      - finance_index
+      - intake_state
+      - approval_state
+      - proof_state
+      - execution_state
+      - receipt_state
+
+  EvidenceObject:
+    owner: control_plane
+    scope: evidence
+    key_fields:
+      - evidence_object_id
+      - tenant_id
+      - action_intent_record_id
+      - evidence_type
+      - storage_ref
+      - content_digest
+      - artifact_control_state
+
+  ApprovalRequest:
+    owner: control_plane
+    scope: approvals
+    key_fields:
+      - approval_request_id
+      - tenant_id
+      - action_intent_record_id
+      - policy_pack_id
+      - required_decision_count
+      - eligible_role_ids
+      - status
+
+  ApprovalDecision:
+    owner: control_plane
+    scope: approvals
+    key_fields:
+      - approval_decision_id
+      - approval_request_id
+      - tenant_id
+      - decided_by_principal_id
+      - decision
+
+  IssuedProof:
+    owner: control_plane
+    scope: proof_issuance
+    kernel_dependencies:
+      - kernel_receipt_contract
+      - kernel_proof_or_verifier_outputs
+    key_fields:
+      - issued_proof_id
+      - tenant_id
+      - action_intent_record_id
+      - proof_kind
+      - kernel_artifact_refs
+      - proof_payload_ref
+      - proof_digest
+      - signing_key_reference_id
+      - proof_state
+
+  SigningKeyReference:
+    owner: control_plane
+    scope: key_management
+    key_fields:
+      - signing_key_reference_id
+      - tenant_id
+      - provider_key_ref
+      - key_purpose
+      - algorithm
+      - status
+
+  EscrowRecord:
+    owner: control_plane
+    scope: capability_escrow
+    key_fields:
+      - escrow_record_id
+      - tenant_id
+      - action_intent_record_id
+      - issued_proof_id
+      - capability_kind
+      - protected_resource_ref
+      - release_mode
+      - status
+      - execution_state
+      - capability_reference
+
+  ReceiptRecord:
+    owner: control_plane
+    scope: receipt_ingestion
+    kernel_dependencies:
+      - kernel_receipt_contract
+    key_fields:
+      - receipt_id
+      - tenant_id
+      - action_intent_record_id
+      - kernel_contract_ref
+      - kernel_receipt_payload_ref
+      - kernel_receipt_digest
+      - receipt_type
+      - index_fields
+      - receipt_state
+      - artifact_control_state
+
+  ReplayConsumptionState:
+    owner: control_plane
+    scope: replay_management
+    key_fields:
+      - replay_consumption_state_id
+      - tenant_id
+      - consumer_name
+      - receipt_id
+      - stream_cursor
+      - status
+
+  ProviderExecutionHook:
+    owner: control_plane
+    scope: provider_orchestration_hooks
+    key_fields:
+      - provider_execution_hook_id
+      - tenant_id
+      - action_intent_record_id
+      - hook_type
+      - provider_ref
+      - provider_correlation_id
+      - hook_status
+
+  ReconciliationRecord:
+    owner: control_plane
+    scope: reconciliation
+    key_fields:
+      - reconciliation_record_id
+      - tenant_id
+      - action_intent_record_id
+      - receipt_id
+      - reconciliation_type
+      - status
+
+  AuditEvent:
+    owner: control_plane
+    scope: audit
+    key_fields:
+      - audit_event_id
+      - tenant_id
+      - actor_principal_id
+      - event_type
+      - subject_type
+      - subject_id
+      - event_time
+
+  ArtifactControlState:
+    owner: control_plane
+    scope: revocation_quarantine
+    key_fields:
+      - artifact_control_state_id
+      - tenant_id
+      - subject_type
+      - subject_id
+      - state
+      - reason_code
+      - imposed_at
+
+relationships:
+  - "Tenant 1:N TenantMembership"
+  - "User 1:N TenantMembership"
+  - "Role N:M TenantMembership via role_ids"
+  - "Tenant 1:N PolicyPack"
+  - "PolicyPack 1:N WorkflowRule"
+  - "Tenant 1:N ActionIntentRecord"
+  - "ActionIntentRecord 1:N EvidenceObject"
+  - "ActionIntentRecord 1:N ApprovalRequest"
+  - "ApprovalRequest 1:N ApprovalDecision"
+  - "ActionIntentRecord 1:N ReceiptRecord"
+  - "ActionIntentRecord 1:N IssuedProof"
+  - "ActionIntentRecord 1:N ProviderExecutionHook"
+  - "ActionIntentRecord 1:N ReconciliationRecord"
+  - "ActionIntentRecord 1:N AuditEvent"
+  - "ReceiptRecord 1:N ReplayConsumptionState"
+  - "IssuedProof N:1 SigningKeyReference"
+  - "EvidenceObject|IssuedProof|ReceiptRecord|EscrowRecord 1:N ArtifactControlState history"

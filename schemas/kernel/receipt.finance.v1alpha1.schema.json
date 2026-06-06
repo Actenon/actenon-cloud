@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-control-plane.local/schemas/kernel/receipt.finance.v1alpha1.schema.json",
+  "title": "Pinned External Receipt Contract (Finance v1alpha1)",
+  "description": "Local pinned copy of an external versioned finance receipt contract for release-1 development. Replace this artifact with the published open kernel contract when it is available.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_id",
+    "intent_id",
+    "receipt_type",
+    "outcome",
+    "occurred_at",
+    "action_intent_digest",
+    "action_type",
+    "amount_minor",
+    "currency"
+  ],
+  "properties": {
+    "receipt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "receipt_type": {
+      "type": "string",
+      "enum": [
+        "execution_result",
+        "settlement_confirmation",
+        "failure_notice"
+      ]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "pending"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action_intent_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "payment",
+        "transfer",
+        "payout",
+        "collection",
+        "settlement_instruction"
+      ]
+    },
+    "amount_minor": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "source_account_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destination_account_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_execution_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "settlement_reference": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proof_nonce": {
+      "type": "string",
+      "minLength": 1
+    },
+    "audience": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "metadata": {
+      "type": "object",
+      "default": {}
+    }
+  }
+}
