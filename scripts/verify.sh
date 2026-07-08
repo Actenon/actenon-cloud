@@ -368,8 +368,20 @@ require_file "migrations/versions/20260606_0010_transparency_log.py" "Transparen
 require_file "migrations/versions/20260606_0011_issuer_registry.py" "Issuer registry migration exists"
 require_file "migrations/versions/README.md" "Migration versions placeholder exists"
 require_file "examples/README.md" "Examples placeholder exists"
-require_absent_path ".venv" "Committed virtual environment artifacts are absent"
-require_absent_path "var/action_control_plane.db" "Committed local database artifact is absent"
+# .venv is allowed if it's in .gitignore (local dev artifact, not committed)
+if [ -d "$ROOT_DIR/.venv" ] && ! git -C "$ROOT_DIR" check-ignore .venv >/dev/null 2>&1; then
+    echo "[FAIL] Committed virtual environment artifacts are absent (unexpected path present: .venv)"
+    ISSUES=1
+else
+    echo "[PASS] Committed virtual environment artifacts are absent"
+fi
+# var/action_control_plane.db is allowed if var/ is in .gitignore
+if [ -f "$ROOT_DIR/var/action_control_plane.db" ] && ! git -C "$ROOT_DIR" check-ignore var/action_control_plane.db >/dev/null 2>&1; then
+    echo "[FAIL] Committed local database artifact is absent (unexpected path present: var/action_control_plane.db)"
+    ISSUES=1
+else
+    echo "[PASS] Committed local database artifact is absent"
+fi
 
 require_text "README.md" '^# Actenon Cloud$' "README names the repository correctly"
 require_no_text "README.md" '/Users/' "README does not contain local absolute filesystem links"

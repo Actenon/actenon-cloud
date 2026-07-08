@@ -47,7 +47,20 @@ def _extract_trace_id(traceparent: str | None, fallback_seed: str) -> str:
 def _path_template_for_request(request: Request) -> str:
     route = request.scope.get("route")
     template = getattr(route, "path", None)
-    return str(template or "unmatched")
+    if not template:
+        return "unmatched"
+    # Starlette route.path does NOT include the router prefix when mounted
+    # via include_router(prefix=...). Reconstruct the full template by
+    # prepending the prefix from the actual request path.
+    actual_path = request.scope.get("path", "")
+    if actual_path and template != "unmatched":
+        # If the template is a suffix of the actual path, prepend the
+        # difference. E.g. template="/live", actual="/api/v1/health/live"
+        # → full template="/api/v1/health/live".
+        if actual_path.endswith(template):
+            prefix = actual_path[: -len(template)] if template else ""
+            return prefix + template
+    return str(template)
 
 
 def _request_log_fields(request: Request) -> dict[str, object]:
