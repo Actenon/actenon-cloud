@@ -60,3 +60,27 @@ jobs:
 
       - name: Judge
         run: bash scripts/judge.sh
+
+  kernel-conformance:
+    # Phase 2: cross-repo conformance — run the kernel's own conformance
+    # suite + cloud's kernel-bridge contract test to prove the spine is intact.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run kernel conformance suite
+        run: python -m actenon.cli conformance run --require-complete
+
+      - name: Run cloud kernel-bridge contract test
+        run: python -m pytest tests/contract/test_kernel_bridge.py -v

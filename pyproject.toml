@@ -9,6 +9,7 @@ description = "Pilot-stage managed control layer for governed invoice payment ex
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "actenon-kernel @ git+https://github.com/Actenon/actenon-kernel.git",
   "alembic>=1.14,<2.0",
   "fastapi>=0.115,<1.0",
   "jsonschema>=4.23,<5.0",
@@ -22,7 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "actenon-kernel[asymmetric] @ git+https://github.com/Actenon/actenon.git@c7d3f0a53209dd0deee11d9042cc08c16bba6ed8",
+  "actenon-kernel[asymmetric] @ git+https://github.com/Actenon/actenon-kernel.git",
   "build>=1.2,<2.0",
   "cryptography>=42,<49",
   "httpx>=0.28,<1.0",
