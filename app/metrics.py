@@ -186,14 +186,19 @@ class HistogramMetric:
             counts = {(): 0}
             sums = {(): 0.0}
         for labels in label_sets:
-            running_total = 0
+            # Prometheus histograms require *cumulative* bucket counts: each
+            # `_bucket{le="X"}` sample must be the number of observations with
+            # value <= X. `observe()` already stores cumulative counts (it
+            # increments every bucket whose upper bound is >= value), so each
+            # bucket value is emitted directly. Summing them here would
+            # double-count and break monotonicity.
             for bucket in self._buckets:
-                running_total += bucket_counts[labels].get(bucket, 0)
+                cumulative = bucket_counts[labels].get(bucket, 0)
                 lines.append(
                     _format_sample(
                         f"{self.definition.name}_bucket",
                         labels,
-                        float(running_total),
+                        float(cumulative),
                         extra_labels=(("le", _format_float(bucket)),),
                     )
                 )

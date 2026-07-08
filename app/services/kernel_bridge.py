@@ -31,7 +31,6 @@ from actenon.models.contracts import (
 from actenon.models.runtime import DynamicContextInput, PolicyDecision, RuleEvaluation
 from actenon.proof.canonical import canonicalize_bytes, sha256_hex
 from actenon.proof.service import PCCBMinter, PCCBVerifier, build_action_hash_input
-from actenon.proof.signers.local import build_local_proof_signer
 
 
 class CloudKernelBridgeError(RuntimeError):
@@ -82,7 +81,6 @@ def export_kernel_pccb(
     Returns (intent, pccb) where intent is needed later for edge verification
     and pccb is the signed kernel PCCB.
     """
-    import os
 
     now = datetime.now(UTC)
     if expires_at < now:
@@ -160,7 +158,6 @@ def verify_kernel_pccb_at_edge(
     parameter was mutated between issuance and execution, the kernel rejects
     it (ACTION_MISMATCH, TARGET_MISMATCH, or ACTION_HASH_MISMATCH).
     """
-    import os
 
     # Phase 4: prefer Ed25519 (asymmetric) over HMAC.
     from app.services.ed25519_signer import resolve_signer
