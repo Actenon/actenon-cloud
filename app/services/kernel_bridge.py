@@ -124,15 +124,10 @@ def export_kernel_pccb(
         max_ttl_seconds=int((expires_at - now).total_seconds()) or 900,
     )
 
-    secret = signing_secret
-    if secret is None:
-        env_key = os.environ.get("ACTENON_SIGNING_KEY", "").strip()
-        if env_key:
-            secret = env_key
-    if secret is not None:
-        signer = build_local_proof_signer(secret=secret)
-    else:
-        signer = build_local_proof_signer()
+    # Phase 4: prefer Ed25519 (asymmetric) over HMAC.
+    from app.services.ed25519_signer import resolve_signer
+
+    signer = resolve_signer(hmac_secret=signing_secret)
 
     minter = PCCBMinter(
         signer=signer,
@@ -167,15 +162,10 @@ def verify_kernel_pccb_at_edge(
     """
     import os
 
-    secret = signing_secret
-    if secret is None:
-        env_key = os.environ.get("ACTENON_SIGNING_KEY", "").strip()
-        if env_key:
-            secret = env_key
-    if secret is not None:
-        signer = build_local_proof_signer(secret=secret)
-    else:
-        signer = build_local_proof_signer()
+    # Phase 4: prefer Ed25519 (asymmetric) over HMAC.
+    from app.services.ed25519_signer import resolve_signer
+
+    signer = resolve_signer(hmac_secret=signing_secret)
     verifier = PCCBVerifier(signer=signer)
 
     now = datetime.now(UTC)
