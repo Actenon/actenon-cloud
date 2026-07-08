@@ -51,15 +51,18 @@ def _path_template_for_request(request: Request) -> str:
         return "unmatched"
     # Starlette route.path does NOT include the router prefix when mounted
     # via include_router(prefix=...). Reconstruct the full template by
-    # prepending the prefix from the actual request path.
+    # finding where the route-level template matches in the actual path.
     actual_path = request.scope.get("path", "")
-    if actual_path and template != "unmatched":
-        # If the template is a suffix of the actual path, prepend the
-        # difference. E.g. template="/live", actual="/api/v1/health/live"
-        # → full template="/api/v1/health/live".
-        if actual_path.endswith(template):
-            prefix = actual_path[: -len(template)] if template else ""
-            return prefix + template
+    if not actual_path:
+        return str(template)
+    # Convert template {param} placeholders to a regex that matches any
+    # path segment, then find where the template matches at the end of
+    # the actual path. The prefix is everything before that match.
+    import re as _re
+    pattern = _re.sub(r"\{[^}]+\}", r"[^/]+", template)
+    match = _re.search(pattern + r"$", actual_path)
+    if match:
+        return actual_path[: match.start()] + template
     return str(template)
 
 
