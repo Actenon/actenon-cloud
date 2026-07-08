@@ -36,3 +36,5 @@ var/
 # Logs
 *.log
 logs/
+egg-info
+uv.lock
