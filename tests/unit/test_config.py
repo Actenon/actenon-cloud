@@ -108,9 +108,13 @@ def test_production_runtime_accepts_external_managed_auth_stub() -> None:
         auth_mode="external_managed_bearer",
         capability_release_mode="external_managed",
         kms_endpoint="https://kms.example.com",
+        oidc_issuer_url="https://auth.example.com/realms/cloud",
+        oidc_client_id="actenon-cloud",
+        oidc_client_secret="oidc-secret-value",  # noqa: S106
     )
 
     assert settings.auth_mode == "external_managed_bearer"
+    assert settings.oidc_issuer_url == "https://auth.example.com/realms/cloud"
 
 
 def test_production_runtime_rejects_default_bootstrap_admin_token() -> None:

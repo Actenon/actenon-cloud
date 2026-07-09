@@ -1,0 +1,142 @@
+name: security
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "codex/**"
+  pull_request:
+  schedule:
+    # Weekly vulnerability re-scan — Sundays at 6 AM UTC.
+    - cron: "0 6 * * 0"
+
+jobs:
+  sbom-and-vuln-gate:
+    name: SBOM + vulnerability gate
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cloud with dev deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          # SBOM + audit tooling — installed separately so the gate can run
+          # even if the project itself doesn't pin these tools. The `|| true`
+          # means a missing tool doesn't fail the install step; the gate
+          # below handles the "tool not available" path explicitly.
+          python -m pip install --upgrade pip-audit cyclonedx-bom || true
+
+      - name: Generate CycloneDX SBOM (if cyclonedx-bom is available)
+        # Generate a CycloneDX SBOM from the installed environment. Skipped
+        # (rather than failed) if cyclonedx-bom is unavailable — the
+        # vulnerability gate below is the hard gate.
+        run: |
+          if command -v cyclonedx-py >/dev/null 2>&1; then
+            cyclonedx-py environment \
+              --output-format json \
+              --output-file sbom.cdx.json \
+              --force
+            echo "sbom=generated" >> "$GITHUB_OUTPUT"
+          else
+            echo "cyclonedx-py not installed — skipping SBOM generation"
+            echo "sbom=skipped" >> "$GITHUB_OUTPUT"
+          fi
+        id: sbom
+
+      - name: Upload SBOM artifact
+        if: ${{ hashFiles('sbom.cdx.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: actenon-cloud-sbom
+          path: sbom.cdx.json
+          retention-days: 30
+
+      - name: Run pip-audit (vulnerability gate)
+        # Run pip-audit against the installed environment. If vulnerabilities
+        # are found (exit code 2), re-run with JSON output and inspect each
+        # finding — only HIGH or CRITICAL severities fail the gate.
+        run: |
+          if ! command -v pip-audit >/dev/null 2>&1; then
+            echo "##[error]pip-audit is not installed; cannot run vulnerability gate"
+            exit 1
+          fi
+
+          set +e
+          pip-audit --strict --vulnerability-service osv --desc on
+          EXIT_CODE=$?
+          set -e
+
+          case "$EXIT_CODE" in
+            0)
+              echo "pip-audit: no vulnerabilities detected"
+              exit 0
+              ;;
+            1)
+              echo "##[error]pip-audit: audit failed to run"
+              exit 1
+              ;;
+            2)
+              echo "pip-audit: vulnerabilities detected — inspecting severities"
+              ;;
+            *)
+              echo "##[error]pip-audit: unexpected exit code $EXIT_CODE"
+              exit 1
+              ;;
+          esac
+
+          # Re-run with JSON output so we can filter by severity.
+          set +e
+          pip-audit --format json --output pip-audit.json
+          set -e
+
+          python - <<'PY'
+          import json
+          import sys
+
+          with open("pip-audit.json") as handle:
+              report = json.load(handle)
+
+          blocking = []
+          for dep in report.get("dependencies", []):
+              for vuln in dep.get("vulns", []):
+                  severity = (
+                      vuln.get("severity")
+                      or vuln.get("db_specific", {}).get("severity")
+                      or "UNKNOWN"
+                  ).upper()
+                  if severity in {"HIGH", "CRITICAL"}:
+                      blocking.append({
+                          "package": dep.get("name"),
+                          "version": dep.get("version"),
+                          "id": vuln.get("id"),
+                          "severity": severity,
+                          "description": vuln.get("description", "").strip(),
+                      })
+
+          if blocking:
+              print("##[error]Blocking HIGH/CRITICAL vulnerabilities found:")
+              for v in blocking:
+                  print(f"  - {v['package']}=={v['version']}  {v['id']}  [{v['severity']}]")
+                  if v["description"]:
+                      print(f"      {v['description'][:200]}")
+              sys.exit(1)
+          print("No HIGH/CRITICAL vulnerabilities — gate passes.")
+          PY
+
+      - name: Upload pip-audit report
+        if: ${{ always() && hashFiles('pip-audit.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: actenon-cloud-pip-audit
+          path: pip-audit.json
+          retention-days: 30

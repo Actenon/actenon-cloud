@@ -36,6 +36,71 @@ TRACEPARENT_PATTERN = re.compile(
 )
 
 
+def _configure_otel(app: FastAPI, settings: Settings) -> None:
+    """Optionally instrument the app with OpenTelemetry tracing.
+
+    Fails closed: if ``opentelemetry`` or
+    ``opentelemetry.instrumentation.fastapi`` is not installed, or if
+    instrumentation raises for any reason, the app continues to run
+    without tracing. This keeps OTel an optional observability addon.
+    """
+    try:
+        from opentelemetry import trace
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import ConsoleSpanProcessor
+    except ImportError:
+        runtime_logger.info(
+            "runtime.otel.skipped",
+            extra={
+                "event": "runtime.otel.skipped",
+                "service": settings.service_slug,
+                "environment": settings.environment,
+                "component": "observability",
+                "reason": "opentelemetry not installed",
+            },
+        )
+        return
+
+    try:
+        resource = Resource.create(
+            {
+                "service.name": settings.service_slug,
+                "service.version": settings.version,
+                "deployment.environment": settings.environment,
+            }
+        )
+        provider = TracerProvider(resource=resource)
+        # Default to a console span processor. Production deployments should
+        # configure OTLP via OTEL_EXPORTER_OTLP_ENDPOINT and add an
+        # OTLPSpanProcessor in addition to (or instead of) this one.
+        provider.add_span_processor(ConsoleSpanProcessor())
+        trace.set_tracer_provider(provider)
+        FastAPIInstrumentor.instrument_app(app)
+        runtime_logger.info(
+            "runtime.otel.instrumented",
+            extra={
+                "event": "runtime.otel.instrumented",
+                "service": settings.service_slug,
+                "environment": settings.environment,
+                "component": "observability",
+            },
+        )
+    except Exception as exc:
+        runtime_logger.warning(
+            "runtime.otel.instrumentation_failed",
+            extra={
+                "event": "runtime.otel.instrumentation_failed",
+                "service": settings.service_slug,
+                "environment": settings.environment,
+                "component": "observability",
+                "error_class": exc.__class__.__name__,
+                "error_message": str(exc),
+            },
+        )
+
+
 def _extract_trace_id(traceparent: str | None, fallback_seed: str) -> str:
     if traceparent:
         match = TRACEPARENT_PATTERN.match(traceparent.strip())
@@ -137,6 +202,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_router, prefix=runtime_settings.api_v1_prefix)
     app.include_router(pilot_ui_router)
     app.mount("/pilot-static", StaticFiles(directory=PILOT_UI_STATIC_DIR), name="pilot-static")
+
+    # Optional OpenTelemetry tracing — fails closed if not installed.
+    _configure_otel(app, runtime_settings)
 
     @app.get("/metrics", include_in_schema=False)
     def get_metrics() -> PlainTextResponse:

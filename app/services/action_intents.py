@@ -7,7 +7,7 @@ from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from jsonschema import Draft202012Validator
@@ -28,6 +28,9 @@ from app.models import (
 from app.services.approvals import ApprovalService
 from app.services.evidence import EvidenceService
 from app.services.policy_engine import PolicyEngine, PolicyManagementService
+
+if TYPE_CHECKING:
+    from app.services.auth import AuthenticatedSession
 
 SUPPORTED_ACTION_INTENT_CONTRACTS = {
     "open_execution_kernel.action_intent.finance.v1alpha1": (
@@ -120,8 +123,22 @@ class ActionIntentService:
         self.approval_service = approval_service or ApprovalService(session)
         self.evidence_service = evidence_service
 
-    def intake(self, payload: dict[str, Any]) -> IntakeResult:
+    def intake(
+        self,
+        payload: dict[str, Any],
+        *,
+        auth_session: AuthenticatedSession | None = None,
+    ) -> IntakeResult:
         started = perf_counter()
+        # B5: bind requested_by to the authenticated session. The client
+        # may still send a ``requested_by`` in the request body for schema
+        # compatibility, but the authoritative principal is the one bound
+        # to the bearer token — never the client-supplied value.
+        if auth_session is not None:
+            payload["requested_by"] = {
+                "principal_type": auth_session.principal_type,
+                "principal_id": auth_session.principal_id,
+            }
         requested_by = payload.get("requested_by") or {}
         intake_counter = get_metrics_registry().counter(
             "action_control_plane_action_intake_total",

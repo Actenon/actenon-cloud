@@ -37,7 +37,13 @@ def test_external_managed_bearer_stub_rejects_authentication(tmp_path: Path) -> 
     try:
         service = AuthService(session, settings=make_settings(tmp_path))
 
-        with pytest.raises(AuthenticationError, match="managed bearer integration is still a stub"):
+        # B6: external_managed_bearer now routes through the OIDC verifier.
+        # Without oidc_issuer_url configured, authentication is refused before
+        # any JWKS fetch is attempted.
+        with pytest.raises(
+            AuthenticationError,
+            match="OIDC token verification requires oidc_issuer_url",
+        ):
             service.authenticate_bearer_token("stub-token")
     finally:
         session.close()

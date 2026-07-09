@@ -3,9 +3,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -23,6 +25,10 @@ from app.models import (
     SigningOperationStatus,
     TrustTier,
 )
+
+if TYPE_CHECKING:
+    from app.services.ed25519_signer import Ed25519KeyPair
+    from app.services.key_set_publisher import KeySetPublisher
 
 
 class SigningKeyNotFoundError(LookupError):
@@ -179,6 +185,157 @@ class SigningService:
         self.session.refresh(key_reference)
         return key_reference
 
+    def rotate_signing_key(
+        self,
+        *,
+        tenant_id: str,
+        key_purpose: SigningKeyPurpose,
+        new_display_name: str | None = None,
+        issuer_name: str | None = None,
+        issuer_uri: str | None = None,
+        trust_tier: TrustTier | None = None,
+        lifecycle_metadata: dict[str, Any] | None = None,
+        key_set_publisher: KeySetPublisher | None = None,
+        key_file_path: str | Path | None = None,
+    ) -> tuple[SigningKeyReference, Ed25519KeyPair]:
+        """Rotate the default signing key for the given tenant + purpose.
+
+        Performs the full B1 key-rotation lifecycle:
+
+        1. Generates a fresh Ed25519 keypair via ``ed25519_signer``.
+        2. Marks the previous default key as non-default (it remains
+           ``active`` so existing proofs still verify, just no new proofs
+           are minted with it).
+        3. Registers the new key as the default for the tenant+purpose.
+        4. Publishes the resulting JWKS-style public key set to the
+           ``key_set_publisher`` (if provided). The published set covers
+           every known public key for the tenant, so old ``key_id``s
+           remain verifiable by anyone who fetches the key set.
+        5. Returns ``(new_key_reference, new_keypair)`` so callers can
+           persist the new private key (dev file, KMS, etc.) as needed.
+
+        Old ``key_id``s remain verifiable because the published key set
+        contains all known public keys, not just the current default.
+        """
+        from app.services.ed25519_signer import (
+            generate_ed25519_keypair,
+            save_ed25519_keypair,
+        )
+
+        old_key = self.session.scalar(
+            select(SigningKeyReference).where(
+                SigningKeyReference.tenant_id == tenant_id,
+                SigningKeyReference.key_purpose == key_purpose,
+                SigningKeyReference.status == SigningKeyStatus.active,
+                SigningKeyReference.is_default.is_(True),
+            )
+        )
+        if old_key is None:
+            raise SigningKeyNotFoundError(
+                "no default signing key is available to rotate for the requested tenant and purpose"
+            )
+
+        new_key_id = f"ed25519-{uuid4().hex[:12]}"
+        new_keypair = generate_ed25519_keypair(
+            key_id=new_key_id,
+            tenant_id=tenant_id,
+        )
+
+        # In dev/test, persist the new private key to the configured file path
+        # so resolve_signer() picks it up for subsequent signing. In production,
+        # the caller is responsible for provisioning the new key in KMS.
+        target_path: Path | None = None
+        if key_file_path is not None:
+            target_path = Path(key_file_path)
+        else:
+            env_path = os.environ.get("ACTENON_ED25519_KEY_FILE", "").strip()
+            if env_path:
+                target_path = Path(env_path)
+        if target_path is not None:
+            save_ed25519_keypair(new_keypair, target_path)
+
+        rotation_metadata: dict[str, Any] = {
+            "rotated_from": old_key.signing_key_reference_id,
+            "rotation_key_id": new_key_id,
+            "rotated_at": utc_now().isoformat(),
+        }
+        if lifecycle_metadata:
+            rotation_metadata.update(lifecycle_metadata)
+
+        new_key = self.register_key(
+            tenant_id=tenant_id,
+            display_name=new_display_name or f"rotated-{new_key_id}",
+            key_purpose=key_purpose,
+            algorithm=SigningAlgorithm.eddsa,
+            key_backend=SigningKeyBackend.external_managed,
+            provider_key_ref=f"local:{new_key_id}",
+            public_key_ref=new_keypair.key.public_key_ref,
+            issuer_name=issuer_name,
+            issuer_uri=issuer_uri,
+            trust_tier=trust_tier,
+            lifecycle_metadata=rotation_metadata,
+            is_default=True,
+        )
+
+        if key_set_publisher is not None:
+            key_set_publisher.publish(
+                document=self.current_public_key_set(
+                    tenant_id=tenant_id,
+                    key_purpose=key_purpose,
+                ),
+                version=new_key_id,
+            )
+
+        return new_key, new_keypair
+
+    def current_public_key_set(
+        self,
+        *,
+        tenant_id: str,
+        key_purpose: SigningKeyPurpose | None = None,
+    ) -> dict[str, Any]:
+        """Build a JWKS-style public key set covering all known signing keys.
+
+        Includes active and retired (non-revoked) keys for the tenant, so
+        verifiers can verify proofs signed with any historical ``key_id``.
+        Keys without a ``public_key_ref`` (e.g. legacy registered keys) are
+        omitted — they cannot be verified by third parties anyway.
+        """
+        query = (
+            select(SigningKeyReference)
+            .where(
+                SigningKeyReference.tenant_id == tenant_id,
+                SigningKeyReference.status != SigningKeyStatus.revoked,
+            )
+            .order_by(SigningKeyReference.created_at.asc())
+        )
+        if key_purpose is not None:
+            query = query.where(SigningKeyReference.key_purpose == key_purpose)
+
+        descriptors: list[dict[str, Any]] = []
+        for key in self.session.scalars(query):
+            if not key.public_key_ref:
+                continue
+            descriptor: dict[str, Any] = {
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "kid": key.signing_key_reference_id,
+                "alg": key.algorithm.value,
+                "use": "sig",
+                "x": key.public_key_ref,
+                "key_id": key.signing_key_reference_id,
+                "status": key.status.value,
+                "is_default": key.is_default,
+                "key_purpose": key.key_purpose.value,
+            }
+            descriptors.append(descriptor)
+        return {
+            "contract": {"name": "signing_key_discovery", "version": "v1"},
+            "tenant_id": tenant_id,
+            "published_at": format_timestamp(utc_now()),
+            "keys": descriptors,
+        }
+
     def resolve_key(
         self,
         *,
@@ -304,15 +461,13 @@ class SigningService:
         payload: bytes,
     ) -> str:
         """Sign with Ed25519 via the resolved backend (local file or KMS)."""
-        import os as _os
-
         from app.services.ed25519_signer import resolve_signer
 
         # In production, refuse to boot without KMS
-        env = _os.environ.get("ACTENON_ENV", self.settings.environment).strip().lower()
+        env = os.environ.get("ACTENON_ENV", self.settings.environment).strip().lower()
         is_production = env in ("production", "prod", "staging", "release")
 
-        kms_endpoint = _os.environ.get("ACTENON_KMS_ENDPOINT", "").strip()
+        kms_endpoint = os.environ.get("ACTENON_KMS_ENDPOINT", "").strip()
         if is_production and not kms_endpoint:
             raise SigningConfigurationError(
                 "production environment requires ACTENON_KMS_ENDPOINT for KMS-backed "
@@ -370,3 +525,9 @@ class SigningService:
 
     def _base64url(self, value: bytes) -> str:
         return base64.urlsafe_b64encode(value).decode("utf-8").rstrip("=")
+
+
+def format_timestamp(value: datetime) -> str:
+    """ISO-8601 UTC timestamp with second precision and ``Z`` suffix."""
+    normalized = normalize_utc(value).replace(microsecond=0)
+    return normalized.strftime("%Y-%m-%dT%H:%M:%SZ")

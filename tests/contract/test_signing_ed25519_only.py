@@ -32,6 +32,16 @@ class TestBootRefusal:
             "non-default-bootstrap-token",
         )
         monkeypatch.setenv("ACTION_CONTROL_PLANE_CAPABILITY_RELEASE_MODE", "external_managed")
+        # Satisfy the B6 OIDC guard so the KMS guard is the one that fires.
+        monkeypatch.setenv(
+            "ACTION_CONTROL_PLANE_OIDC_ISSUER_URL",
+            "https://auth.example.com/realms/cloud",
+        )
+        monkeypatch.setenv("ACTION_CONTROL_PLANE_OIDC_CLIENT_ID", "actenon-cloud")
+        monkeypatch.setenv(
+            "ACTION_CONTROL_PLANE_OIDC_CLIENT_SECRET",
+            "oidc-secret-value",
+        )
 
         with pytest.raises(ValueError, match="ACTENON_KMS_ENDPOINT"):
             Settings(
@@ -55,6 +65,16 @@ class TestBootRefusal:
             "non-default-bootstrap-token",
         )
         monkeypatch.setenv("ACTION_CONTROL_PLANE_CAPABILITY_RELEASE_MODE", "external_managed")
+        # Satisfy the B6 OIDC guard so KMS-only boot is permitted.
+        monkeypatch.setenv(
+            "ACTION_CONTROL_PLANE_OIDC_ISSUER_URL",
+            "https://auth.example.com/realms/cloud",
+        )
+        monkeypatch.setenv("ACTION_CONTROL_PLANE_OIDC_CLIENT_ID", "actenon-cloud")
+        monkeypatch.setenv(
+            "ACTION_CONTROL_PLANE_OIDC_CLIENT_SECRET",
+            "oidc-secret-value",
+        )
         Settings(
             environment="production",
             database_url="postgresql+psycopg://user:pass@localhost:5432/test",
