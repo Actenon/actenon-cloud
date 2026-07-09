@@ -47,7 +47,7 @@ def _escape_label_value(value: str) -> str:
 def _format_float(value: float) -> str:
     if value == float("inf"):
         return "+Inf"
-    if value.is_integer():
+    if float(value).is_integer():
         return str(int(value))
     return f"{value:.12g}"
 
