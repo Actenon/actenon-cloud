@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     proof_default_ttl_seconds: int = Field(default=900, ge=60, le=604800)
     proof_max_ttl_seconds: int = Field(default=86400, ge=300, le=2592000)
     dev_signing_secret: str = DEFAULT_DEV_SIGNING_SECRET
+    kms_endpoint: str = ""  # Set ACTENON_KMS_ENDPOINT in production
     auth_mode: Literal[
         "development_signed_bearer", "external_managed_bearer"
     ] = "development_signed_bearer"
@@ -218,6 +219,16 @@ class Settings(BaseSettings):
                 "issuer_status_ttl_seconds must not exceed "
                 "issuer_status_max_staleness_seconds"
             )
+        # B1: production must have KMS-backed Ed25519 signing
+        if self.environment in ("production", "staging") and not self.kms_endpoint:
+            import os
+            kms_from_env = os.environ.get("ACTENON_KMS_ENDPOINT", "").strip()
+            if not kms_from_env:
+                raise ValueError(
+                    "ACTENON_KMS_ENDPOINT must be set in production/staging for "
+                    "KMS-backed Ed25519 signing. The local file-based Ed25519 "
+                    "backend is NOT permitted in production."
+                )
         return self
 
     def validate_environment(self) -> None:

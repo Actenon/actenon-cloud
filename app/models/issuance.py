@@ -59,9 +59,10 @@ class SigningKeyBackend(enum.StrEnum):
 
 
 class SigningAlgorithm(enum.StrEnum):
-    hs256 = "HS256"
+    hs256 = "HS256"  # DEPRECATED — kept for migration compatibility, not for new keys
     rs256 = "RS256"
     es256 = "ES256"
+    eddsa = "EdDSA"  # Ed25519 — the only supported algorithm for new keys
 
 
 class SigningOperationStatus(enum.StrEnum):

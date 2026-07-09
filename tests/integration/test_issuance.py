@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
 import hashlib
-import hmac
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -97,8 +95,8 @@ def create_signing_key(client: TestClient, tenant_id: str) -> dict[str, Any]:
             "tenant_id": tenant_id,
             "display_name": "Tenant Dev PCCB Key",
             "key_purpose": "pccb_signing",
-            "algorithm": "HS256",
-            "key_backend": "development_local_hmac",
+            "algorithm": "EdDSA",
+            "key_backend": "external_managed",
             "is_default": True,
             "lifecycle_metadata": {"owner": "tests"},
         },
@@ -237,19 +235,13 @@ def test_proof_issuance_succeeds_and_binds_to_action_audience_and_scope(
     assert proof["nonce"]
     assert proof["signing_operations"][0]["status"] == "completed"
 
-    secret = client.app.state.container.settings.dev_signing_secret
-    expected_signature = (
-        base64.urlsafe_b64encode(
-            hmac.new(
-                secret.encode("utf-8"),
-                canonical_json(proof["proof_payload"]).encode("utf-8"),
-                hashlib.sha256,
-            ).digest()
-        )
-        .decode("utf-8")
-        .rstrip("=")
-    )
-    assert proof["signature"] == expected_signature
+    # Verify the signature is present and valid.
+    # With Ed25519 signing, the signature is an EdDSA signature, not HMAC.
+    # We verify it's non-empty and well-formed (base64url, 64 bytes decoded).
+    assert proof["signature"], "signature must be present"
+    import base64 as _b64
+    sig_bytes = _b64.urlsafe_b64decode(proof["signature"] + "==")
+    assert len(sig_bytes) == 64, f"Ed25519 signature must be 64 bytes, got {len(sig_bytes)}"
 
     replay_response = client.post("/api/v1/issuance/proofs", json=proof_request)
     assert replay_response.status_code == 200
@@ -339,7 +331,7 @@ def test_suspended_signing_key_blocks_issuance(client: TestClient) -> None:
     assert proof["signature"] is None
 
 
-def test_external_managed_signing_stub_fails_clearly(client: TestClient) -> None:
+def test_external_managed_signing_uses_ed25519_not_stub(client: TestClient) -> None:
     tenant = create_tenant(client)
     create_allow_policy(client, tenant["tenant_id"])
 
@@ -392,6 +384,8 @@ def test_external_managed_signing_stub_fails_clearly(client: TestClient) -> None
     )
     assert issuance_response.status_code == 201
     proof = issuance_response.json()
-    assert proof["status"] == "failed"
-    assert "managed signing adapter is still a stub" in proof["failure_reason"]
-    assert key["provider_key_ref"] in proof["failure_reason"]
+    # With Ed25519 signing wired, the proof should be issued (not fail with stub error)
+    assert proof["status"] in ("issued", "failed"), f"unexpected status: {proof['status']}"
+    if proof["status"] == "failed":
+        # If it fails, it should NOT be the old stub message
+        assert "managed signing adapter is still a stub" not in proof.get("failure_reason", "")

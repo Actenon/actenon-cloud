@@ -20,8 +20,29 @@ from app.services.kernel_bridge import (
 
 
 @pytest.fixture(autouse=True)
-def _stable_signing_key(monkeypatch):
-    monkeypatch.setenv("ACTENON_SIGNING_KEY", "cloud-bridge-test-key")
+def _stable_ed25519_key(monkeypatch, tmp_path):
+    """Set up an Ed25519 key for all kernel bridge tests."""
+    from app.services.ed25519_signer import generate_ed25519_keypair, save_ed25519_keypair
+    key_path = tmp_path / "test-ed25519-key.json"
+    kp = generate_ed25519_keypair(key_id="cloud-bridge-test-key")
+    save_ed25519_keypair(kp, key_path)
+    monkeypatch.setenv("ACTENON_ED25519_KEY_FILE", str(key_path))
+    monkeypatch.delenv("ACTENON_SIGNING_KEY", raising=False)
+    # Store on monkeypatch so tests can access it
+    monkeypatch._ed25519_kp = kp
+
+
+def _build_context_helper(*, tenant_id, actor_id, action_name,
+                        action_capability, audience_id="actenon-cloud-gateway"):
+    """Build a DynamicContextInput for kernel verification."""
+    from actenon.models.contracts import AudienceRef
+    from actenon.models.runtime import DynamicContextInput
+    return DynamicContextInput(
+        request_id="req-test",
+        audience=AudienceRef(type="service", id=audience_id),
+        scope_capabilities=(action_capability,),
+        now=datetime.now(UTC),
+    )
 
 
 def _make_pccb(**overrides):
@@ -46,15 +67,19 @@ def _make_pccb(**overrides):
 def test_cloud_mints_real_kernel_pccb():
     """export_kernel_pccb returns a real kernel PCCB that verifies."""
     from actenon.proof.service import PCCBVerifier
-    from actenon.proof.signers.local import build_local_proof_signer
-
+    
     intent, pccb = _make_pccb()
     assert pccb.pccb_id.startswith("pccb_")
-    assert pccb.signature.algorithm == "HS256"
+    assert pccb.signature.algorithm == "EdDSA", f"expected EdDSA, got {pccb.signature.algorithm}"
     assert pccb.action_hash.algorithm == "sha-256"
 
     # Verify with the kernel's own verifier
-    signer = build_local_proof_signer(secret="cloud-bridge-test-key")  # noqa: S106
+    import os
+    from pathlib import Path
+
+    from app.services.ed25519_signer import build_ed25519_signer, load_ed25519_keypair
+    kp = load_ed25519_keypair(Path(os.environ["ACTENON_ED25519_KEY_FILE"]))
+    signer = build_ed25519_signer(kp)
     verifier = PCCBVerifier(signer=signer)
     from actenon.models.contracts import AudienceRef
     from actenon.models.runtime import DynamicContextInput
@@ -125,20 +150,26 @@ def test_target_mutation_detected_at_edge():
 def test_cross_signer_rejected():
     """A PCCB minted with key A is rejected by key B's verifier."""
     from actenon.core.errors import ProofVerificationError
+    from actenon.proof.service import PCCBVerifier
+
+    from app.services.ed25519_signer import build_ed25519_signer, generate_ed25519_keypair
 
     intent, pccb = _make_pccb()
+
+    # Verify with a DIFFERENT Ed25519 keypair
+    wrong_kp = generate_ed25519_keypair(key_id="wrong-key")
+    wrong_signer = build_ed25519_signer(wrong_kp)
+    wrong_verifier = PCCBVerifier(signer=wrong_signer)
+
+    # _build_context_helper is defined below in this file
+
+    context = _build_context_helper(
+        tenant_id="tenant-acme",
+        actor_id="ops-alice",
+        action_name="invoice.payment.refund",
+        action_capability="invoice.payment.refund",
+        audience_id="actenon-cloud-gateway",
+    )
     with pytest.raises(ProofVerificationError) as exc_info:
-        verify_kernel_pccb_at_edge(
-            intent,
-            pccb,
-            tenant_id="tenant-acme",
-            actor_id="ops-alice",
-            action_name="invoice.payment.refund",
-            action_capability="invoice.payment.refund",
-            action_parameters={"invoice_id": "inv-123", "amount": 2500, "currency": "USD"},
-            target_resource_type="payment-provider",
-            target_resource_id="stripe",
-            expires_at=datetime.now(UTC) + timedelta(minutes=15),
-            signing_secret="wrong-key",  # noqa: S106
-        )
+        wrong_verifier.verify(intent, pccb, context)
     assert exc_info.value.refusal_code == "SIGNATURE_INVALID"

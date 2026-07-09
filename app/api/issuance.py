@@ -58,8 +58,8 @@ class SigningKeyCreateRequest(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=32)
     display_name: str = Field(min_length=1, max_length=255)
     key_purpose: SigningKeyPurpose = SigningKeyPurpose.pccb_signing
-    algorithm: SigningAlgorithm = SigningAlgorithm.hs256
-    key_backend: SigningKeyBackend = SigningKeyBackend.development_local_hmac
+    algorithm: SigningAlgorithm = SigningAlgorithm.eddsa
+    key_backend: SigningKeyBackend = SigningKeyBackend.external_managed
     provider_key_ref: str | None = Field(default=None, max_length=255)
     public_key_ref: str | None = Field(default=None, max_length=1024)
     issuer_name: str | None = Field(default=None, max_length=255)
