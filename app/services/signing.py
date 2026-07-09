@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import hmac
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -273,24 +272,23 @@ class SigningService:
         key_reference: SigningKeyReference,
         payload: bytes,
     ) -> str:
+        """Sign payload using Ed25519 only. dev-HMAC is GONE.
+
+        The signing backend resolves to:
+        - LocalDevEd25519Backend when ACTENON_ENV in {dev, test} and a key
+          file is available (ACTENON_ED25519_KEY_FILE or default path).
+        - KmsEd25519Backend when ACTENON_KMS_ENDPOINT is set (production).
+        - Boot refusal if production and no KMS endpoint configured.
+        """
         if key_reference.key_backend == SigningKeyBackend.development_local_hmac:
-            if self.settings.environment == "production":
-                raise SigningConfigurationError(
-                    "development-local signing backend may not be used in production"
-                )
-            if key_reference.algorithm != SigningAlgorithm.hs256:
-                raise SigningConfigurationError(
-                    "development-local signing backend supports only HS256"
-                )
-            digest = hmac.new(
-                self.settings.dev_signing_secret.encode("utf-8"),
-                payload,
-                hashlib.sha256,
-            ).digest()
-            return self._base64url(digest)
+            raise SigningConfigurationError(
+                "development_local_hmac signing has been REMOVED. "
+                "Use Ed25519 signing via the external_managed backend. "
+                "See ACTENON_ED25519_KEY_FILE (dev) or ACTENON_KMS_ENDPOINT (production)."
+            )
 
         if key_reference.key_backend == SigningKeyBackend.external_managed:
-            return self._sign_with_external_managed_backend(
+            return self._sign_with_ed25519_backend(
                 key_reference=key_reference,
                 payload=payload,
             )
@@ -299,22 +297,31 @@ class SigningService:
             f"unsupported signing backend '{key_reference.key_backend.value}'"
         )
 
-    def _sign_with_external_managed_backend(
+    def _sign_with_ed25519_backend(
         self,
         *,
         key_reference: SigningKeyReference,
         payload: bytes,
     ) -> str:
-        del payload
-        raise SigningConfigurationError(
-            "external_managed signing is configured for key "
-            f"'{key_reference.signing_key_reference_id}' "
-            f"(provider_key_ref='{key_reference.provider_key_ref}'), but the "
-            "managed signing adapter is still a stub. Complete provider request "
-            "signing, key resolution, timeout and retry policy, provider error "
-            "mapping, and signature verification handling in app/services/signing.py "
-            "before hosted use."
-        )
+        """Sign with Ed25519 via the resolved backend (local file or KMS)."""
+        import os as _os
+
+        from app.services.ed25519_signer import resolve_signer
+
+        # In production, refuse to boot without KMS
+        env = _os.environ.get("ACTENON_ENV", self.settings.environment).strip().lower()
+        is_production = env in ("production", "prod", "staging", "release")
+
+        kms_endpoint = _os.environ.get("ACTENON_KMS_ENDPOINT", "").strip()
+        if is_production and not kms_endpoint:
+            raise SigningConfigurationError(
+                "production environment requires ACTENON_KMS_ENDPOINT for KMS-backed "
+                "Ed25519 signing. The local file-based backend is NOT permitted in production."
+            )
+
+        signer = resolve_signer()
+        sig_spec = signer.sign(payload)
+        return sig_spec.value
 
     def _unset_other_defaults(
         self,
@@ -343,19 +350,17 @@ class SigningService:
         key_backend: SigningKeyBackend,
         algorithm: SigningAlgorithm,
     ) -> None:
-        if (
-            key_backend == SigningKeyBackend.development_local_hmac
-            and algorithm != SigningAlgorithm.hs256
-        ):
+        if key_backend == SigningKeyBackend.development_local_hmac:
             raise SigningKeyStateError(
-                "development-local signing keys must use HS256"
+                "development_local_hmac backend has been REMOVED. "
+                "Use external_managed with Ed25519 (EdDSA)."
             )
         if (
             key_backend == SigningKeyBackend.external_managed
             and algorithm == SigningAlgorithm.hs256
         ):
             raise SigningKeyStateError(
-                "external managed signing keys should use asymmetric algorithms"
+                "external managed signing keys must use Ed25519 (EdDSA)"
             )
 
     def _default_provider_key_ref(self, key_backend: SigningKeyBackend) -> str:

@@ -25,6 +25,10 @@ def make_settings(tmp_path: Path) -> Settings:
         evidence_storage_root=str(tmp_path / "evidence"),
         enable_docs=False,
         auth_mode="external_managed_bearer",
+        kms_endpoint="https://kms.test.example.com",
+        capability_release_mode="external_managed",
+        dev_signing_secret="test-secret-at-least-16-chars",  # noqa: S106
+        bootstrap_admin_token="test-bootstrap-token-16-chars",  # noqa: S106
     )
 
 

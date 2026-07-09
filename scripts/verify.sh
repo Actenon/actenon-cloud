@@ -563,7 +563,7 @@ require_text "app/services/evidence.py" 'content_digest|evidence_state' "Evidenc
 require_text "app/services/issuance.py" 'audience|scope_hash|action_intent_digest' "Issuance service binds proofs to exact action and audience scope"
 require_text "app/services/policy_engine.py" 'no active tenant workflow policy is available|default decision applied' "Policy engine includes deterministic decisions"
 require_text "app/services/receipts.py" 'open_execution_kernel\.receipt\.finance\.v1alpha1|reconciliation\.|receipt_state' "Receipt service validates pinned kernel receipts and runs reconciliation hooks"
-require_text "app/services/signing.py" 'development-local signing backend|external managed signing backends are modeled but not implemented' "Signing service distinguishes local and managed signing maturity"
+require_text "app/services/signing.py" 'Ed25519 only|development_local_hmac signing has been REMOVED' "Signing service uses Ed25519 only, dev-HMAC removed"
 require_text "app/services/countersigning_provider.py" 'create_non_exportable_ed25519_key|private key material|sign_ed25519' "Counter-signing provider prevents private-key export through its public interface"
 require_text "app/services/countersigning.py" 'counter_signature\.sign|minimum_lifecycle_approvals|published_key_set_digest' "Counter-signing service enforces service authority, quorum, and publication audit"
 require_text "app/services/issuer_registry.py" 'status_version|ISSUER_REVOKE_PERMISSION|publication failed closed' "Issuer registry service enforces versioned fail-closed revocation publication"

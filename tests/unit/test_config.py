@@ -107,6 +107,7 @@ def test_production_runtime_accepts_external_managed_auth_stub() -> None:
         bootstrap_admin_token="y" * 32,
         auth_mode="external_managed_bearer",
         capability_release_mode="external_managed",
+        kms_endpoint="https://kms.example.com",
     )
 
     assert settings.auth_mode == "external_managed_bearer"
