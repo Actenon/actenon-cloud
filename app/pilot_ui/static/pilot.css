@@ -286,6 +286,36 @@ textarea {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  border-radius: 6px;
+}
+
+/* Sticky header for wide tables on mobile */
+.pilot-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 1;
+}
+
+/* Scroll affordance: subtle gradient on the right edge */
+.pilot-table-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 16px;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(0,0,0,0.04));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.pilot-table-wrap:hover::after,
+.pilot-table-wrap:focus-within::after {
+  opacity: 1;
 }
 
 .pilot-table {
