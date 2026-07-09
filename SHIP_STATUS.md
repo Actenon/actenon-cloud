@@ -1,39 +1,40 @@
 # Ship Status
 
-## Date
+**Last validated:** 2026-07-09
 
-This status reflects the local validation run completed on April 6, 2026.
+Validation commands: verify.sh, judge.sh, pytest
 
-## Current Ship State
+## Internal Development Readiness
 
-Actenon Cloud is now a pilot-stage backend-first private service for finance-focused control-plane workflows. It is beyond repo scaffold stage and beyond pure architecture documentation stage.
+- Lint: **GREEN** (ruff check passes)
+- Tests: **GREEN** (108 passed)
+- Verify: **GREEN** (422 checks passed)
+- Judge: **GREEN** (Overall: PASS)
+- Docker build: **GREEN**
+- Migrations: **GREEN** (alembic upgrade head)
 
-The repo currently implements:
+## Design-Partner Pilot Readiness
 
-- tenant and policy management
-- Action Intent intake against a pinned external kernel contract
-- approval workflow and evidence ingestion
-- bounded proof issuance and signing abstraction
-- capability escrow lifecycle tracking
-- receipt ingestion, reconciliation hooks, and audit trace APIs
-- basic multi-tenant admin and auth foundations
-- release hygiene controls, package build smoke checks, and pilot-readiness planning documents
+- Single-tenant deployment: **READY** (with operator-managed PostgreSQL)
+- Invoice payment workflow: **IMPLEMENTED**
+- Pilot UI: **FUNCTIONAL** (responsive, mobile-friendly)
+- API: **STABLE** (health, metrics, action intents, approvals, audit)
+- Signing: **Ed25519** (dev-local key file; KMS required for production)
+- Evidence: **LocalFS** (object store requires deployment)
+- Capability release: **SIMULATED** (permit broker integration not yet wired)
+- Auth: **Dev bearer** (OIDC SSO not yet implemented)
 
-## Last Verified Locally
+## Production Deployment Readiness
 
-The following checks were run successfully:
+**NOT READY.** The following blockers remain (see BLOCKERS.md):
 
-- `python -m ruff check app tests scripts`
-- `python -m build --sdist --wheel --outdir <temp-dir>`
-- `python -m pytest -q`
-- `python -m alembic upgrade head`
-- `bash scripts/verify.sh`
-- `bash scripts/judge.sh`
+- KMS-backed signing (adapter exists, concrete KMS client not wired)
+- OIDC/SAML SSO (not implemented)
+- Postgres RLS (migration not implemented)
+- Real capability release (permit broker not wired)
+- Object store evidence (S3 backend not implemented)
+- OTel tracing (not implemented)
+- Automated rollback/restore (not exercised)
+- Signed artifacts + SBOM (CI infrastructure not provisioned)
 
-## Honest Summary
-
-- Good for internal company development: yes
-- Good for controlled design-partner pilots: potentially, with explicit cautions and dedicated operator support
-- Good for real production deployment: no
-
-See [CONTROL_PLANE_RELEASE_READINESS.md](CONTROL_PLANE_RELEASE_READINESS.md) for the readiness ratings, [BLOCKERS.md](BLOCKERS.md) for the current hard blockers, and [PILOT_ENVIRONMENT_REQUIREMENTS.md](PILOT_ENVIRONMENT_REQUIREMENTS.md) for the minimum pilot bar.
+**Production: no.**

@@ -2,90 +2,108 @@
 
 ## Purpose
 
-This file lists the gaps that still prevent Actenon Cloud from being honestly described as production-ready.
+This file lists the gaps that prevent Actenon Cloud from being honestly
+described as production-ready. Each category is marked CLOSED (with proof),
+PARTIAL (with exactly what remains), or REQUIRES DEPLOYMENT (operator action).
 
-It also makes clear which limitations are currently tolerable for a supervised design-partner pilot and which ones remain hard blockers for a broader cloud readiness claim.
+## Buyer-Facing Summary
 
-## Managed Pilot Reality
+Actenon Cloud is a managed control plane for governed agent execution. It is
+credible as a supervised design-partner pilot. It is NOT production-ready.
 
-Actenon Cloud can support a controlled pilot when the following conditions are accepted:
+## Blocker Categories
 
-- one dedicated environment per design partner
-- one narrow invoice payment workflow
-- named operator ownership
-- managed PostgreSQL and mounted persistent evidence storage
-- centralized log collection
-- explicit acknowledgement that auth, signing, evidence storage, and observability remain early
+### B1. Signing And Trust — PARTIAL
 
-Those conditions can support a managed pilot. They do not remove the production blockers below.
+**CLOSED:** dev-HMAC signing has been REMOVED. The signing path uses Ed25519
+exclusively. Production boot is refused without `ACTENON_KMS_ENDPOINT`.
+Tests: `tests/contract/test_signing_ed25519_only.py` (9 tests, all pass).
 
-## Production Blockers
+**REMAINS:**
+- KmsEd25519Backend concrete implementation (adapter interface exists; real
+  KMS endpoint wiring requires operator-provided infrastructure).
+- Key rotation: multiple keys supported but automated rotation + published
+  JWKS verification key history not implemented.
 
-### Identity And Access
+### B2. Evidence Durability + PHI — PARTIAL
 
-- No enterprise operator SSO or federation is implemented.
-- No production workload identity implementation exists for service-to-service auth.
-- The implemented auth mode is still development-signed bearer token issuance with a bootstrap admin path.
+**CLOSED:** Field-classification layer implemented
+(`app/services/field_classification.py`). PHI/PII fields are replaced with
+salted commitments in the immutable record. Erasing raw evidence preserves
+the hash chain (GDPR Art.17). Tests: `tests/contract/test_field_classification.py`
+(5 tests, all pass).
 
-### Signing And Trust
+**REMAINS:**
+- The commitment layer is not yet wired into the receipt ingestion path
+  (`receipts.py` still stores raw `kernel_receipt` in `receipt_payload`).
+- ObjectStoreEvidenceStore (S3-compatible) not implemented; LocalFsEvidenceStore
+  is the current backend.
+- Per-tenant salts not yet generated/stored.
 
-- Managed KMS-backed or HSM-backed signing is not implemented.
-- The active proof-signing path is development-local HS256 HMAC, which is not sufficient for production trust requirements.
-- Key lifecycle and trust-anchor management are still pilot-stage.
+### B3. Money As Float — CLOSED (in permit; cloud uses integer minor units)
 
-### Evidence Durability
+**CLOSED:** Permit's budget arithmetic now uses `Decimal` instead of `float`.
+F2 proof: 3 × $0.10 against $0.30 = 3 ALLOWs, remaining exactly 0.0.
+Cloud already uses `amount_minor: int` in its API layer.
 
-- Evidence uploads depend on a mounted filesystem path at runtime.
-- There is no native object-store write path for uploaded evidence.
-- The repo does not yet implement a stronger production evidence durability or storage-isolation posture.
+**REMAINS:**
+- Currency binding (rejecting JPY action vs USD budget) not yet implemented
+  in permit's PDP.
 
-### Capability Release
+### B4. Capability Release — REQUIRES DEPLOYMENT
 
-- Capability release is still simulated.
-- There is no real protected-resource broker or production adapter release path in this repo.
+The simulated capability-release path is still in place. Replacing it with
+permit's real broker requires adding `actenon-permit` as a cloud runtime
+dependency and changing the escrow service architecture. This is a
+production-hardening item, not a code fix.
 
-### Observability And Operations
+### B5. Tenant Isolation — REQUIRES DEPLOYMENT
 
-- The repo implements structured logs and health checks, but no metrics exporter, tracing backend, or alerting pipeline.
-- Backup and restore assumptions are documented, but restore has not been turned into an exercised operational capability here.
-- Incident response, dashboards, and paging posture remain early.
+Postgres row-level security (RLS) requires a managed PostgreSQL instance
+and Alembic migration. The schema is designed for RLS but the migration
+is not implemented. Per-tenant key separation depends on B2 per-tenant
+salts.
 
-### Deployment And Recovery
+### B6. Identity And Access — PARTIAL
 
-- A repeatable single-tenant containerized path exists, but deployment is still operator-driven.
-- No automated rollout, rollback, or environment provisioning workflow is implemented.
-- No production HA, autoscaling, or broader disaster recovery posture is implemented in repo artifacts.
+**CLOSED:** Production boot is refused if `development_signed_bearer` auth
+mode is enabled. The `external_managed_bearer` mode is available.
 
-### Tenant Isolation
+**REMAINS:**
+- OIDC/SAML operator SSO not implemented.
+- Service-to-service workload tokens not implemented.
+- Bootstrap admin backdoor still exists (must be removed for production).
 
-- No database-native row-level security is implemented.
-- No documented per-tenant key-separation strategy is enforced in runtime behavior.
-- Some workflow actor fields still need tighter binding to authenticated sessions.
+### B7. Kernel Compatibility CI — PARTIAL
 
-### Kernel And Verifier Compatibility Hardening
+**CLOSED:** Cloud imports `FailureCode` from the kernel (single source of
+truth). Cross-repo conformance tests exist in permit
+(`tests/test_cross_repo_conformance.py`).
 
-- Kernel-facing contracts are pinned locally, not synchronized automatically from the separate open kernel repo.
-- There is no automated live compatibility workflow with the separate verifier repo or verifier interface.
-- Provider integrations are still early hooks and lifecycle records rather than hardened production adapters.
+**REMAINS:**
+- CI job that pulls kernel conformance vectors and runs them against cloud
+  is not yet wired.
+- Nightly live-compat workflow not implemented.
 
-### Release Governance
+### B8. Release Governance — REQUIRES DEPLOYMENT
 
-- Package build smoke exists, but there is no signed artifact publication flow.
-- No release provenance, attestation, or dependency-vulnerability gate is implemented.
+Signed artifact publication (cosign), SBOM generation, dependency-vulnerability
+gate, and build provenance are all deployment/CI infrastructure items.
 
-## Buyer-Facing Summary Of What Is Missing
+### B9. Observability — PARTIAL
 
-For technical buyers, the clearest current blockers are:
+**CLOSED:** `/metrics` endpoint exposes Prometheus-format metrics with
+correct path templates (including dynamic routes). Health/readiness endpoints
+work. Structured log correlation IDs are present.
 
-- production identity for humans and services
-- managed signing infrastructure
-- durable evidence storage beyond mounted filesystem persistence
-- full observability and incident operations
-- automated deployment, rollback, and recovery
-- stronger hosted isolation and multi-tenant controls
+**REMAINS:**
+- OpenTelemetry tracing not implemented.
+- Alert rule set (YAML) not shipped.
+- RED/USE metrics for the decision path not fully covered.
 
-## Internal Priority Signal
+### B10. Deployment/Recovery — REQUIRES DEPLOYMENT
 
-If the repo needs one practical reading of these blockers, it is this:
-
-Actenon Cloud is credible as a supervised managed pilot, but not yet credible as a broad hosted cloud product claim.
+HA topology, autoscaling, multi-region DR, paging/on-call rotation, and
+incident response ownership are operator responsibilities. The repo provides
+Dockerfile, docker-compose, and migration tooling. Automated rollback and
+exercised restore are not implemented.
