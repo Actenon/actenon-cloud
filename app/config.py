@@ -75,6 +75,15 @@ class Settings(BaseSettings):
     )
     capability_default_ttl_seconds: int = Field(default=600, ge=60, le=604800)
     capability_max_ttl_seconds: int = Field(default=3600, ge=300, le=2592000)
+    # B6: OIDC integration for production identity. These are required when
+    # ``environment == "production"`` because the bootstrap-admin / dev-bearer
+    # backdoor is refused in production. The issuer URL is the OIDC discovery
+    # endpoint base (e.g. ``https://auth.example.com/realms/cloud``); the
+    # client id and secret are used for token introspection / JWKS-anchored
+    # signature verification of incoming bearer tokens.
+    oidc_issuer_url: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
     api_v1_prefix: str = "/api/v1"
     enable_docs: bool = True
     request_timeout_seconds: int = Field(default=30, ge=1, le=300)
@@ -209,6 +218,15 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "production must not use development_simulated capability release mode"
+            )
+        # B6: production must have OIDC configured, because the dev-bearer /
+        # bootstrap-admin backdoor is refused in production and the only
+        # accepted external_managed_bearer path is OIDC.
+        if self.environment == "production" and not self.oidc_issuer_url.strip():
+            raise ValueError(
+                "production must configure oidc_issuer_url for OIDC token "
+                "verification; the dev signed-bearer path is refused in "
+                "production"
             )
         if self.auth_operator_token_ttl_seconds > 604800:
             raise ValueError("auth_operator_token_ttl_seconds exceeds the supported maximum")

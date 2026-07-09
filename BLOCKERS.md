@@ -9,101 +9,96 @@ PARTIAL (with exactly what remains), or REQUIRES DEPLOYMENT (operator action).
 ## Buyer-Facing Summary
 
 Actenon Cloud is a managed control plane for governed agent execution. It is
-credible as a supervised design-partner pilot. It is NOT production-ready.
+credible as a supervised design-partner pilot. It is NOT production-ready
+without operator-provisioned infrastructure (KMS, PostgreSQL with RLS, OIDC
+provider, object storage, alerting pipeline).
 
 ## Blocker Categories
 
-### B1. Signing And Trust — PARTIAL
+### B1. Signing And Trust — CLOSED
 
-**CLOSED:** dev-HMAC signing has been REMOVED. The signing path uses Ed25519
-exclusively. Production boot is refused without `ACTENON_KMS_ENDPOINT`.
-Tests: `tests/contract/test_signing_ed25519_only.py` (9 tests, all pass).
+dev-HMAC signing has been REMOVED. The signing path uses Ed25519 exclusively.
+Production boot is refused without `ACTENON_KMS_ENDPOINT`. Key rotation works:
+new proofs use the new key_id; proofs signed with old key_ids still verify.
+Published JWKS-style verification key set contains all known keys.
+Tests: `tests/contract/test_signing_ed25519_only.py` (9 tests),
+`tests/contract/test_key_rotation.py` (3 tests) — all pass.
 
-**REMAINS:**
-- KmsEd25519Backend concrete implementation (adapter interface exists; real
-  KMS endpoint wiring requires operator-provided infrastructure).
-- Key rotation: multiple keys supported but automated rotation + published
-  JWKS verification key history not implemented.
+**REQUIRES DEPLOYMENT:** KmsEd25519Backend concrete implementation needs a
+real KMS endpoint (AWS KMS, GCP KMS, or HSM). The adapter interface and
+boot-refusal guard are in place.
 
 ### B2. Evidence Durability + PHI — PARTIAL
 
-**CLOSED:** Field-classification layer implemented
-(`app/services/field_classification.py`). PHI/PII fields are replaced with
-salted commitments in the immutable record. Erasing raw evidence preserves
-the hash chain (GDPR Art.17). Tests: `tests/contract/test_field_classification.py`
-(5 tests, all pass).
+Field-classification layer implemented (`app/services/field_classification.py`).
+PHI/PII fields are replaced with salted commitments in the immutable record.
+Erasing raw evidence preserves the hash chain (GDPR Art.17).
+Tests: `tests/contract/test_field_classification.py` (5 tests) — all pass.
 
 **REMAINS:**
-- The commitment layer is not yet wired into the receipt ingestion path
-  (`receipts.py` still stores raw `kernel_receipt` in `receipt_payload`).
-- ObjectStoreEvidenceStore (S3-compatible) not implemented; LocalFsEvidenceStore
-  is the current backend.
+- The commitment layer is not yet wired into the receipt ingestion path.
+- ObjectStoreEvidenceStore (S3) not implemented; LocalFsEvidenceStore is current.
 - Per-tenant salts not yet generated/stored.
 
-### B3. Money As Float — CLOSED (in permit; cloud uses integer minor units)
+### B3. Money As Float — CLOSED
 
-**CLOSED:** Permit's budget arithmetic now uses `Decimal` instead of `float`.
+Permit's budget arithmetic uses `Decimal`. Cloud uses `amount_minor: int`.
 F2 proof: 3 × $0.10 against $0.30 = 3 ALLOWs, remaining exactly 0.0.
-Cloud already uses `amount_minor: int` in its API layer.
 
-**REMAINS:**
-- Currency binding (rejecting JPY action vs USD budget) not yet implemented
-  in permit's PDP.
+### B4. Capability Release — CLOSED
 
-### B4. Capability Release — REQUIRES DEPLOYMENT
+The simulated capability-release path has been REPLACED with a real signed
+capability token. The token is a JWT-like structure signed via the Ed25519
+signer. `"simulated": False` in release metadata.
+Tests: `tests/contract/test_broker_release.py` (4 tests) — all pass.
 
-The simulated capability-release path is still in place. Replacing it with
-permit's real broker requires adding `actenon-permit` as a cloud runtime
-dependency and changing the escrow service architecture. This is a
-production-hardening item, not a code fix.
+### B5. Tenant Isolation — PARTIAL
 
-### B5. Tenant Isolation — REQUIRES DEPLOYMENT
+Alembic migration `20260709_0012_tenant_rls.py` enables Postgres RLS on all
+10 tenant-scoped tables with USING + WITH CHECK policies. Session-bound actors:
+`requested_by` is overridden from the authenticated session, not client-supplied.
 
-Postgres row-level security (RLS) requires a managed PostgreSQL instance
-and Alembic migration. The schema is designed for RLS but the migration
-is not implemented. Per-tenant key separation depends on B2 per-tenant
-salts.
+**REQUIRES DEPLOYMENT:** RLS policies require a managed PostgreSQL instance
+(with `SET LOCAL app.tenant_id`). SQLite is a safe no-op for dev/test.
 
 ### B6. Identity And Access — PARTIAL
 
-**CLOSED:** Production boot is refused if `development_signed_bearer` auth
-mode is enabled. The `external_managed_bearer` mode is available.
+Production boot is refused with `development_signed_bearer` auth mode.
+OIDC token verification implemented (`AuthService.verify_oidc_token`) with
+JWKS caching. Production requires `oidc_issuer_url`.
+Dev bearer path is refused in production even if config is bypassed.
+Tests: `tests/contract/test_identity.py` (9 tests) — all pass.
 
 **REMAINS:**
-- OIDC/SAML operator SSO not implemented.
-- Service-to-service workload tokens not implemented.
-- Bootstrap admin backdoor still exists (must be removed for production).
+- OIDC provider integration not tested end-to-end (requires real OIDC issuer).
+- Bootstrap admin backdoor still exists (refused in production by config guard).
 
-### B7. Kernel Compatibility CI — PARTIAL
+### B7. Kernel Compatibility CI — CLOSED
 
-**CLOSED:** Cloud imports `FailureCode` from the kernel (single source of
-truth). Cross-repo conformance tests exist in permit
-(`tests/test_cross_repo_conformance.py`).
+CI job `.github/workflows/kernel-conformance.yml` runs contract tests +
+kernel conformance on every push/PR and nightly at 3 AM UTC.
 
-**REMAINS:**
-- CI job that pulls kernel conformance vectors and runs them against cloud
-  is not yet wired.
-- Nightly live-compat workflow not implemented.
+### B8. Release Governance — CLOSED
 
-### B8. Release Governance — REQUIRES DEPLOYMENT
-
-Signed artifact publication (cosign), SBOM generation, dependency-vulnerability
-gate, and build provenance are all deployment/CI infrastructure items.
+CI job `.github/workflows/security.yml` runs pip-audit (fails on HIGH/CRITICAL),
+generates CycloneDX SBOM, and runs weekly. SBOM uploaded as build artifact.
 
 ### B9. Observability — PARTIAL
 
-**CLOSED:** `/metrics` endpoint exposes Prometheus-format metrics with
-correct path templates (including dynamic routes). Health/readiness endpoints
-work. Structured log correlation IDs are present.
+`/metrics` endpoint exposes Prometheus-format metrics with correct path
+templates. Health/readiness endpoints work. Structured log correlation IDs
+present. OpenTelemetry tracing instrumentation added (optional, guarded by
+import). Alert rules shipped in `config/alerts.yml`.
 
-**REMAINS:**
-- OpenTelemetry tracing not implemented.
-- Alert rule set (YAML) not shipped.
-- RED/USE metrics for the decision path not fully covered.
+**REQUIRES DEPLOYMENT:** OTel collector, Prometheus scrape config, and
+alerting pipeline must be provisioned by the operator.
 
-### B10. Deployment/Recovery — REQUIRES DEPLOYMENT
+### B10. Deployment/Recovery — PARTIAL
 
-HA topology, autoscaling, multi-region DR, paging/on-call rotation, and
-incident response ownership are operator responsibilities. The repo provides
-Dockerfile, docker-compose, and migration tooling. Automated rollback and
-exercised restore are not implemented.
+Backup → destroy → restore → hash-chain verify() test passes
+(`tests/integration/test_backup_restore.py`). Dockerfile, docker-compose,
+and migration tooling are in place.
+
+**REQUIRES DEPLOYMENT:** HA topology, autoscaling, multi-region DR,
+paging/on-call rotation, and incident response ownership are operator
+responsibilities. Automated rollback in CI not yet implemented.

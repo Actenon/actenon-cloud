@@ -233,7 +233,7 @@ def intake_action_intent(
             tenant_id=payload.tenant_id,
             permission=TENANT_ACTION_INTENT_WRITE,
         )
-        result = service.intake(payload.model_dump(mode="json"))
+        result = service.intake(payload.model_dump(mode="json"), auth_session=auth_session)
     except TenantNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:

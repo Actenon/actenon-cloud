@@ -1,0 +1,82 @@
+# Actenon-Cloud Prometheus alert rules.
+#
+# Load via prometheus.yml:
+#
+#   rule_files:
+#     - /etc/prometheus/actenon-cloud/alerts.yml
+#
+# All rules are scoped to the `action_control_plane_*` metric family emitted
+# by the cloud control-plane. The `actenon_cloud_capability_release_failures`
+# rule references a counter that must be incremented by the escrow service
+# whenever a capability release fails closed; until that metric is emitted
+# the alert will not fire (Prometheus treats absent series as no data).
+
+groups:
+  - name: actenon-cloud
+    interval: 30s
+    rules:
+      # The control plane has stopped emitting metrics — either it's down or
+      # the scrape target has failed for 2+ minutes.
+      - alert: actenon_cloud_down
+        expr: |
+          absent(action_control_plane_runtime_ready) or
+          action_control_plane_runtime_ready == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: actenon-cloud
+        annotations:
+          summary: "Actenon Cloud is not emitting ready metrics"
+          description: |
+            The `action_control_plane_runtime_ready` gauge has been absent or 0
+            for 2 minutes. The control plane may be down, misconfigured, or
+            unable to reach its scrape endpoint.
+
+      # 5xx error rate exceeds 5% of all responses over a 5-minute window.
+      - alert: actenon_cloud_high_error_rate
+        expr: |
+          (
+            sum(rate(action_control_plane_http_requests_total{status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(action_control_plane_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: actenon-cloud
+        annotations:
+          summary: "Actenon Cloud 5xx error rate above 5%"
+          description: |
+            More than 5% of HTTP responses have been 5xx errors for the last
+            5 minutes. Investigate application logs and downstream dependencies.
+
+      # Proof issuance is failing in volume — more than 10 failures in 5 minutes.
+      - alert: actenon_cloud_proof_issuance_failures
+        expr: |
+          sum(increase(action_control_plane_proof_issuance_total{proof_status="failed"}[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: actenon-cloud
+        annotations:
+          summary: "Actenon Cloud proof issuance failures above 10 in 5m"
+          description: |
+            The proof issuance pipeline has recorded more than 10 failures
+            (proof_status="failed") in the last 5 minutes. Check the signing
+            backend, KMS connectivity, and policy/eligibility evaluation.
+
+      # Any capability release failure — fail-closed must never fire silently.
+      - alert: actenon_cloud_capability_release_failures
+        expr: |
+          sum(increase(action_control_plane_capability_release_failures_total[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: actenon-cloud
+        annotations:
+          summary: "Actenon Cloud capability release failure"
+          description: |
+            At least one capability release has failed closed in the last
+            5 minutes. Capability release failures must be triaged
+            immediately — they indicate the escrow broker could not release
+            a protected capability to the target provider.

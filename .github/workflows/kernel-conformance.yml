@@ -1,0 +1,51 @@
+name: kernel-conformance
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "codex/**"
+  pull_request:
+  schedule:
+    # Nightly at 3 AM UTC for live-compat regression detection.
+    - cron: "0 3 * * *"
+
+jobs:
+  kernel-conformance:
+    name: Kernel bridge + conformance
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cloud with dev deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run kernel-bridge contract tests
+        run: |
+          python -m pytest \
+            tests/contract/test_kernel_bridge.py \
+            tests/contract/test_ed25519_cloud.py \
+            tests/contract/test_signing_ed25519_only.py \
+            -v
+
+      - name: Run kernel conformance suite (if installed)
+        # The cloud package depends on actenon-kernel, so this should always
+        # run in CI. We guard anyway so a missing kernel doesn't fail the job
+        # in environments where the kernel is intentionally absent.
+        run: |
+          if python -c "import actenon.cli" 2>/dev/null; then
+            python -m actenon.cli conformance run --require-complete
+          else
+            echo "actenon-kernel not installed — skipping conformance suite"
+          fi

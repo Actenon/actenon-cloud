@@ -32,6 +32,12 @@ from actenon.models.runtime import DynamicContextInput, PolicyDecision, RuleEval
 from actenon.proof.canonical import canonicalize_bytes, sha256_hex
 from actenon.proof.service import PCCBMinter, PCCBVerifier, build_action_hash_input
 
+# Re-export resolve_signer at module level so callers (e.g. escrow's broker
+# release path) can import it from this bridge module. The function itself
+# prefers Ed25519 (asymmetric) over dev-HMAC and is the canonical way to
+# resolve a signer for any signed artifact minted by cloud.
+from app.services.ed25519_signer import resolve_signer  # noqa: E402,F401
+
 
 class CloudKernelBridgeError(RuntimeError):
     """Raised when the bridge cannot translate or verify."""
@@ -215,4 +221,5 @@ __all__ = [
     "build_action_hash_input",
     "canonicalize_bytes",
     "sha256_hex",
+    "resolve_signer",
 ]

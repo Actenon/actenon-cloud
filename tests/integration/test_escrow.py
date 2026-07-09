@@ -109,7 +109,7 @@ def test_escrow_release_consume_and_execution_updates(client: TestClient) -> Non
     assert released["execution_state"] == "capability_released"
     assert released["capability_reference"]
     assert released["capability_token"]
-    assert released["release_metadata"]["simulated"] is True
+    assert released["release_metadata"]["simulated"] is False
     assert released["release_metadata"]["binding"]["audience"] == proof["audience"]
 
     consume_response = client.post(

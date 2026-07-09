@@ -4,9 +4,10 @@ import base64
 import hashlib
 import hmac
 import json
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -294,6 +295,13 @@ class AuthService:
             return self._authenticate_external_managed_bearer(bearer_token)
         if self.settings.auth_mode != AUTH_MODE_DEVELOPMENT_SIGNED_BEARER:
             raise AuthenticationError(f"unsupported auth mode '{self.settings.auth_mode}'")
+        # B6: the development signed-bearer path is a pilot/test-only
+        # convenience. It must NEVER authenticate in production, even if the
+        # config validator is bypassed (defense in depth).
+        if self.settings.environment == "production":
+            raise AuthenticationError(
+                "development signed bearer authentication is refused in production"
+            )
 
         payload = self._decode_development_token(bearer_token)
         issued_at = datetime.fromtimestamp(payload["iat"], tz=UTC)
@@ -885,11 +893,82 @@ class AuthService:
             raise AuthenticationError("bearer token has expired")
         return payload
 
+    def verify_oidc_token(self, bearer_token: str) -> dict[str, object]:
+        """Verify a JWT bearer token against the configured OIDC issuer's JWKS.
+
+        This is the B6 production identity path. The token must be a JWT
+        signed by the issuer referenced by ``settings.oidc_issuer_url``. The
+        signature is verified against the issuer's published JWKS, and the
+        ``iss``, ``aud``, and ``exp`` claims are validated.
+
+        Returns the decoded JWT payload (claims) on success and raises
+        ``AuthenticationError`` on any verification failure.
+
+        This method is safe to call in any environment, but production
+        deployments MUST configure ``oidc_issuer_url``/``oidc_client_id``
+        (enforced by ``app.config.Settings``).
+        """
+        if not self.settings.oidc_issuer_url.strip():
+            raise AuthenticationError(
+                "OIDC token verification requires oidc_issuer_url to be configured"
+            )
+        return _verify_oidc_jwt(
+            bearer_token,
+            issuer=self.settings.oidc_issuer_url,
+            audience=self.settings.oidc_client_id,
+        )
+
     def _authenticate_external_managed_bearer(
         self,
-        _bearer_token: str,
+        bearer_token: str,
     ) -> AuthenticatedSession:
-        raise AuthenticationError(self._external_managed_bearer_stub_message())
+        # B6: route external_managed_bearer through the OIDC verifier. The
+        # JWT's signature is checked against the issuer's JWKS, and iss/aud/exp
+        # are validated. The principal is then resolved from the ``sub`` claim.
+        claims = self.verify_oidc_token(bearer_token)
+        subject = claims.get("sub")
+        if not isinstance(subject, str) or not subject:
+            raise AuthenticationError("OIDC token is missing a subject claim")
+
+        issued_at_raw = claims.get("iat")
+        expires_at_raw = claims.get("exp")
+        issued_at = (
+            datetime.fromtimestamp(int(issued_at_raw), tz=UTC)
+            if isinstance(issued_at_raw, (int, float))
+            else utc_now()
+        )
+        expires_at = (
+            datetime.fromtimestamp(int(expires_at_raw), tz=UTC)
+            if isinstance(expires_at_raw, (int, float))
+            else issued_at + timedelta(seconds=self.settings.auth_operator_token_ttl_seconds)
+        )
+
+        # Resolve a local principal that matches the OIDC subject. The cloud
+        # schema stores the OIDC subject on User.identity_provider_subject.
+        user = self.session.scalar(
+            select(User).where(User.identity_provider_subject == subject)
+        )
+        if user is not None and user.status == UserStatus.active:
+            return self._session_for_user(
+                user_id=user.user_id,
+                issued_at=issued_at,
+                expires_at=expires_at,
+            )
+        # Fall back to a service principal keyed on the same subject.
+        principal = self.session.scalar(
+            select(ServicePrincipal).where(
+                ServicePrincipal.auth_metadata.op("->>")("oidc_sub") == subject
+            )
+        )
+        if principal is not None and principal.status == ServicePrincipalStatus.active:
+            return self._session_for_service_principal(
+                service_principal_id=principal.service_principal_id,
+                issued_at=issued_at,
+                expires_at=expires_at,
+            )
+        raise AuthenticationError(
+            f"OIDC subject '{subject}' is not mapped to an active cloud principal"
+        )
 
     def _ensure_development_auth_enabled(self) -> None:
         if self.settings.auth_mode != AUTH_MODE_DEVELOPMENT_SIGNED_BEARER:
@@ -902,15 +981,6 @@ class AuthService:
             raise AuthValidationError(
                 "development bearer token issuance is only enabled in local and test"
             )
-
-    @staticmethod
-    def _external_managed_bearer_stub_message() -> str:
-        return (
-            "external_managed_bearer auth is configured, but the managed bearer "
-            "integration is still a stub. Complete issuer validation, audience "
-            "validation, signature verification, and principal resolution in "
-            "app/services/auth.py before hosted use."
-        )
 
     @staticmethod
     def _external_managed_bearer_upgrade_hint() -> str:
@@ -982,3 +1052,172 @@ def tenant_id_from_escrow_record(record: EscrowRecord) -> str:
 
 def tenant_id_from_signing_key(record: SigningKeyReference) -> str:
     return record.tenant_id
+
+
+# ---------------------------------------------------------------------------
+# B6: OIDC token verification (production identity path)
+# ---------------------------------------------------------------------------
+
+OIDC_JWKS_CACHE_TTL_SECONDS = 300
+
+
+@dataclass
+class _CachedJwks:
+    keys_by_kid: dict[str, dict[str, Any]]
+    fetched_at: datetime
+    ttl_seconds: int = OIDC_JWKS_CACHE_TTL_SECONDS
+
+
+_jwks_cache: dict[str, _CachedJwks] = {}
+_jwks_cache_lock = threading.Lock()
+
+
+def _oidc_b64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def reset_oidc_jwks_cache() -> None:
+    """Clear the in-memory JWKS cache. Exposed for tests and operational reset."""
+    with _jwks_cache_lock:
+        _jwks_cache.clear()
+
+
+def _fetch_oidc_jwks(issuer_url: str) -> dict[str, dict[str, Any]]:
+    """Fetch and cache the OIDC issuer's JWKS, keyed by ``kid``.
+
+    Discovery follows the standard OIDC well-known path
+    ``{issuer}/.well-known/openid-configuration`` to resolve ``jwks_uri``.
+    The fetched key set is cached in-memory for ``OIDC_JWKS_CACHE_TTL_SECONDS``
+    seconds to avoid re-fetching on every request.
+    """
+    now = utc_now()
+    with _jwks_cache_lock:
+        cached = _jwks_cache.get(issuer_url)
+        if cached is not None and (now - cached.fetched_at).total_seconds() < cached.ttl_seconds:
+            return cached.keys_by_kid
+
+    import httpx
+
+    config_url = f"{issuer_url.rstrip('/')}/.well-known/openid-configuration"
+    config_response = httpx.get(config_url, timeout=10.0)
+    config_response.raise_for_status()
+    config_doc = config_response.json()
+    jwks_uri = config_doc.get("jwks_uri")
+    if not isinstance(jwks_uri, str) or not jwks_uri:
+        raise AuthenticationError(
+            f"OIDC issuer '{issuer_url}' did not advertise a jwks_uri"
+        )
+    jwks_response = httpx.get(jwks_uri, timeout=10.0)
+    jwks_response.raise_for_status()
+    jwks_doc = jwks_response.json()
+    keys_list = jwks_doc.get("keys") or []
+    if not isinstance(keys_list, list):
+        raise AuthenticationError(
+            f"OIDC issuer '{issuer_url}' returned a malformed JWKS document"
+        )
+    keys_by_kid: dict[str, dict[str, Any]] = {}
+    for key in keys_list:
+        if not isinstance(key, dict):
+            continue
+        kid = key.get("kid")
+        if isinstance(kid, str) and kid:
+            keys_by_kid[kid] = key
+    with _jwks_cache_lock:
+        _jwks_cache[issuer_url] = _CachedJwks(
+            keys_by_kid=keys_by_kid,
+            fetched_at=now,
+        )
+    return keys_by_kid
+
+
+def _jwk_to_public_key(jwk: dict[str, Any]):
+    """Materialize a cryptography public key from a JWK dict."""
+    from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
+
+    kty = jwk.get("kty")
+    if kty == "RSA":
+        n = int.from_bytes(_oidc_b64url_decode(jwk["n"]), "big")
+        e = int.from_bytes(_oidc_b64url_decode(jwk["e"]), "big")
+        return rsa.RSAPublicNumbers(e=e, n=n).public_key()
+    if kty == "OKP" and jwk.get("crv") == "Ed25519":
+        x = _oidc_b64url_decode(jwk["x"])
+        return ed25519.Ed25519PublicKey.from_public_bytes(x)
+    raise AuthenticationError(
+        f"unsupported OIDC JWK kty/crv: {kty}/{jwk.get('crv')}"
+    )
+
+
+def _verify_oidc_jwt(
+    token: str,
+    *,
+    issuer: str,
+    audience: str,
+) -> dict[str, object]:
+    """Verify a JWT against the OIDC issuer's JWKS and validate its claims.
+
+    Returns the decoded payload on success; raises ``AuthenticationError`` on
+    any signature, issuer, audience, or expiry failure.
+    """
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise AuthenticationError("OIDC token must be a JWT with three segments")
+    header_b64, payload_b64, signature_b64 = parts
+    try:
+        header = json.loads(_oidc_b64url_decode(header_b64))
+        payload = json.loads(_oidc_b64url_decode(payload_b64))
+        signature = _oidc_b64url_decode(signature_b64)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise AuthenticationError("OIDC token segments are malformed") from exc
+    if not isinstance(header, dict) or not isinstance(payload, dict):
+        raise AuthenticationError("OIDC token segments must be JSON objects")
+
+    alg = header.get("alg")
+    kid = header.get("kid")
+    if not isinstance(alg, str) or not isinstance(kid, str) or not alg or not kid:
+        raise AuthenticationError("OIDC token header must declare alg and kid")
+
+    keys = _fetch_oidc_jwks(issuer)
+    jwk = keys.get(kid)
+    if jwk is None:
+        raise AuthenticationError(
+            f"OIDC token kid '{kid}' not found in issuer JWKS"
+        )
+    public_key = _jwk_to_public_key(jwk)
+
+    signing_input = f"{header_b64}.{payload_b64}".encode()
+    try:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec, padding
+
+        if alg == "RS256":
+            public_key.verify(
+                signature, signing_input, padding.PKCS1v15(), hashes.SHA256()
+            )
+        elif alg == "EdDSA":
+            public_key.verify(signature, signing_input)
+        elif alg == "ES256":
+            public_key.verify(signature, signing_input, ec.ECDSA(hashes.SHA256()))
+        else:
+            raise AuthenticationError(f"unsupported OIDC token alg '{alg}'")
+    except InvalidSignature as exc:
+        raise AuthenticationError("OIDC token signature is invalid") from exc
+
+    if payload.get("iss") != issuer:
+        raise AuthenticationError(
+            "OIDC token iss claim does not match the configured issuer"
+        )
+    aud_claim = payload.get("aud")
+    aud_match = (
+        aud_claim == audience
+        or (isinstance(aud_claim, list) and audience in aud_claim)
+    )
+    if audience and not aud_match:
+        raise AuthenticationError(
+            "OIDC token aud claim does not include the configured client id"
+        )
+    exp = payload.get("exp")
+    if not isinstance(exp, (int, float)) or utc_now().timestamp() >= int(exp):
+        raise AuthenticationError("OIDC token has expired or is missing exp")
+    return payload

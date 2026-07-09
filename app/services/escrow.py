@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import secrets
+import base64
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -23,6 +24,7 @@ from app.models import (
     IssuedProof,
     ProofIssuanceStatus,
 )
+from app.services.kernel_bridge import resolve_signer
 
 
 class EscrowRecordNotFoundError(LookupError):
@@ -71,6 +73,105 @@ def normalize_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _b64url_encode(raw: bytes) -> str:
+    """Encode bytes as unpadded URL-safe base64 (JWT-style)."""
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def _sign_capability_token(
+    *,
+    signer: Any,
+    escrow_id: str,
+    action_intent_digest: str,
+    scope: list[str],
+    audience: str,
+    expiry: datetime,
+    nonce: str,
+) -> tuple[str, str, str]:
+    """Mint a signed JWT-like capability token bound to an escrow record.
+
+    The token has three base64url segments separated by ``.``:
+
+      header.payload.signature
+
+    where ``header`` carries the signing algorithm and key id, ``payload``
+    carries the bounded capability claims (escrow_id, action_intent_digest,
+    scope, audience, expiry, nonce), and ``signature`` is the signer's
+    EdDSA / HMAC signature over the ``header.payload`` signing input.
+
+    Returns ``(capability_token, key_id, algorithm)`` so callers can record
+    provenance in the release metadata.
+    """
+    header = {
+        "alg": signer.algorithm,
+        "typ": "acp-cap+jwt",
+        "kid": signer.key_id,
+    }
+    payload = {
+        "escrow_id": escrow_id,
+        "action_intent_digest": action_intent_digest,
+        "scope": list(scope),
+        "audience": audience,
+        "exp": int(normalize_utc(expiry).timestamp()),
+        "nonce": nonce,
+    }
+    header_part = _b64url_encode(
+        json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    payload_part = _b64url_encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    signing_input = f"{header_part}.{payload_part}".encode()
+    signature_spec = signer.sign(signing_input)
+    signature_part = signature_spec.value
+    capability_token = f"{header_part}.{payload_part}.{signature_part}"
+    return capability_token, signature_spec.key_id, signature_spec.algorithm
+
+
+def verify_capability_token(capability_token: str, *, signer: Any) -> dict[str, Any]:
+    """Verify a signed JWT-like capability token and return its payload.
+
+    Raises ``CapabilityTokenValidationError`` if the token is malformed or
+    the signature does not verify against ``signer``.
+    """
+    parts = capability_token.split(".")
+    if len(parts) != 3:
+        raise CapabilityTokenValidationError("capability token must have three segments")
+    header_part, payload_part, signature_part = parts
+    try:
+        header = json.loads(_b64url_decode(header_part).decode("utf-8"))
+        payload = json.loads(_b64url_decode(payload_part).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise CapabilityTokenValidationError(
+            "capability token header or payload is invalid"
+        ) from exc
+    if not isinstance(header, dict) or not isinstance(payload, dict):
+        raise CapabilityTokenValidationError("capability token segments must be JSON objects")
+    if header.get("typ") != "acp-cap+jwt":
+        raise CapabilityTokenValidationError(
+            "capability token header is not an acp-cap+jwt token"
+        )
+    signing_input = f"{header_part}.{payload_part}".encode()
+    from actenon.proof.signers.external_managed import SignatureSpec
+
+    signature_spec = SignatureSpec(
+        algorithm=header.get("alg", ""),
+        key_id=header.get("kid", ""),
+        encoding="base64url",
+        value=signature_part,
+    )
+    if not signer.verify(signing_input, signature_spec):
+        raise CapabilityTokenValidationError(
+            "capability token signature is invalid for the configured signer"
+        )
+    return payload
 
 
 class EscrowService:
@@ -198,7 +299,27 @@ class EscrowService:
                 "external managed capability release is modeled but not implemented"
             )
 
-        capability_token = secrets.token_urlsafe(32)
+        # B4: real permit-broker release. The capability token is now a signed
+        # JWT-like structure (Ed25519 when a key is configured, dev-HMAC only
+        # as the pilot fallback) bound to the escrow's action_intent_digest,
+        # scope, audience, expiry, and a fresh nonce. This replaces the prior
+        # ``secrets.token_urlsafe(32)`` simulation.
+        capability_nonce = uuid4().hex
+        capability_expiry = (
+            record.expires_at
+            if record.expires_at is not None
+            else utc_now() + timedelta(seconds=self.settings.capability_default_ttl_seconds)
+        )
+        signer = resolve_signer()
+        capability_token, capability_key_id, capability_algorithm = _sign_capability_token(
+            signer=signer,
+            escrow_id=record.escrow_record_id,
+            action_intent_digest=record.action_intent_digest,
+            scope=list(record.scope),
+            audience=record.audience,
+            expiry=capability_expiry,
+            nonce=capability_nonce,
+        )
         now = utc_now()
         previous_status = record.status
         previous_execution_state = record.execution_state
@@ -206,15 +327,22 @@ class EscrowService:
         capability_token_digest = self._token_digest(capability_token)
         release_metadata = {
             **record.release_metadata,
-            "simulated": True,
+            "simulated": False,
             "release_mode": record.release_mode.value,
-            "provider_integration": "not_connected",
+            "provider_integration": "permit_broker_signed_capability",
+            "signing": {
+                "algorithm": capability_algorithm,
+                "key_id": capability_key_id,
+                "typ": "acp-cap+jwt",
+                "nonce": capability_nonce,
+            },
             "binding": {
                 "audience": record.audience,
                 "scope": list(record.scope),
                 "scope_hash": record.scope_hash,
                 "action_intent_digest": record.action_intent_digest,
                 "proof_nonce": record.proof_nonce,
+                "expiry": normalize_utc(capability_expiry).isoformat(),
             },
         }
         release_claim = self.session.execute(
@@ -249,8 +377,10 @@ class EscrowService:
             from_execution_state=previous_execution_state,
             to_execution_state=record.execution_state,
             transition_metadata={
-                "simulated": True,
+                "simulated": False,
                 "capability_reference": capability_reference,
+                "signing_algorithm": capability_algorithm,
+                "signing_key_id": capability_key_id,
             },
         )
         self._synchronize_action_intent_execution_state(record.action_intent_record_id)
