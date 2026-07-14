@@ -110,10 +110,15 @@ export function MutationRefused({
   );
 }
 
-// ── ChainVerifyBadge — green tick / red broken ──────────────────────
+// ── ChainVerifyBadge — green tick / red broken / preview (honest) ───
+//
+// The 'verified' state is ONLY shown after a real call to the
+// transparency-log inclusion-proof API returns a valid proof.
+// The 'preview' state is shown when no backend is available (demo mode)
+// — it does NOT claim verification, because that would be trust theatre.
 
 interface ChainVerifyBadgeProps {
-  status: 'verified' | 'broken' | 'checking' | 'unknown';
+  status: 'verified' | 'broken' | 'checking' | 'unknown' | 'preview';
   onClick?: () => void;
 }
 
@@ -122,6 +127,21 @@ export function ChainVerifyBadge({ status, onClick }: ChainVerifyBadgeProps) {
     return (
       <span className="inline-flex items-center gap-2 text-sm text-muted">
         <Spinner className="h-3 w-3" /> Verifying chain&hellip;
+      </span>
+    );
+  }
+
+  if (status === 'preview') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide rounded-xs border bg-surface-2 text-muted border-edge"
+        title="Verification runs at the kernel edge against the live transparency log. No backend is connected in this preview."
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <path d="M8 5v3M8 10.5v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        Preview &mdash; runs at kernel edge
       </span>
     );
   }
