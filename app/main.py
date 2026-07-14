@@ -9,7 +9,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
@@ -202,6 +202,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_router, prefix=runtime_settings.api_v1_prefix)
     app.include_router(pilot_ui_router)
     app.mount("/pilot-static", StaticFiles(directory=PILOT_UI_STATIC_DIR), name="pilot-static")
+
+    # Serve the new React SPA under /app if the build output exists.
+    # The legacy /pilot pages remain at their original paths as a fallback.
+    web_dist_dir = Path(__file__).resolve().parent.parent / "web" / "dist"
+    if web_dist_dir.is_dir():
+        app.mount(
+            "/app/assets",
+            StaticFiles(directory=web_dist_dir / "assets"),
+            name="app-assets",
+        )
+
+        @app.get("/app", include_in_schema=False)
+        @app.get("/app/{full_path:path}", include_in_schema=False)
+        def serve_spa(full_path: str | None = None) -> FileResponse:
+            """SPA fallback: serve index.html for all /app/* routes."""
+            index_path = web_dist_dir / "index.html"
+            return FileResponse(index_path)
 
     # Optional OpenTelemetry tracing — fails closed if not installed.
     _configure_otel(app, runtime_settings)
