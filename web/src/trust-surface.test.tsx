@@ -16,7 +16,12 @@ function renderWithProviders(ui: React.ReactElement) {
   });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/']}>{ui}</MemoryRouter>
+      <MemoryRouter
+        initialEntries={['/']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        {ui}
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -49,7 +54,7 @@ describe('Trust Surface', () => {
     expect(attempted.length).toBeGreaterThan(0);
   });
 
-  it('shows the chain-verify badge and transitions to checking on click', () => {
+  it('shows the chain-verify badge and is honest in demo mode (no fake green tick)', () => {
     renderWithProviders(<TrustSurface />);
     fireEvent.click(screen.getByText('Replay the demo incident'));
 
@@ -57,9 +62,12 @@ describe('Trust Surface', () => {
     const verifyButton = screen.getByRole('button', { name: /verify/i });
     expect(verifyButton).toBeInTheDocument();
 
-    // Click to verify — should show "Verifying chain…" (with ellipsis)
+    // Click to verify — in demo mode (no backend), it must show "Preview",
+    // NOT a fake "verified" green tick. This is the honesty guarantee.
     fireEvent.click(verifyButton);
-    expect(screen.getByText(/Verifying chain/i)).toBeInTheDocument();
+    expect(screen.getByText(/Preview/i)).toBeInTheDocument();
+    // Crucially, the fake "CHAIN VERIFIED" must never appear in demo mode.
+    expect(screen.queryByText('CHAIN VERIFIED')).not.toBeInTheDocument();
   });
 
   it('renders the evaluation trace table', () => {

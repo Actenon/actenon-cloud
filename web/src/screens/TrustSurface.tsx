@@ -11,6 +11,7 @@
 import { useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useActionIntent, useActionTrace, useReceipt } from '../api/hooks';
+import { api, ApiError } from '../api/client';
 import { DEMO_TRACE, DEMO_ACTION_INTENT, DEMO_RECEIPT } from '../api/mock';
 import { extractFailureCode, glossForCode } from '../lib/failure-codes';
 import { formatPrincipal, formatTimestamp } from '../lib/format';
@@ -35,6 +36,9 @@ import {
   ErrorState,
 } from '../components/TrustComponents';
 import type { FinanceActionTrace, ActionIntentDetail } from '../api/schemas';
+
+// The transparency log ID — matches app/config.py transparency_log_id default.
+const TRANSPARENCY_LOG_ID = 'actenon-transparency-log';
 
 export function TrustSurface() {
   const { id } = useParams<{ id: string }>();
@@ -418,22 +422,47 @@ function ReceiptSection({
   actionIntentDigest: string;
 }) {
   const receiptQuery = useReceipt(demo ? undefined : (receiptId ?? undefined));
-  const [chainStatus, setChainStatus] = useState<'verified' | 'broken' | 'checking' | 'unknown'>(
-    'unknown',
-  );
+  const [chainStatus, setChainStatus] = useState<
+    'verified' | 'broken' | 'checking' | 'unknown' | 'preview'
+  >('unknown');
 
   const receipt = demo ? DEMO_RECEIPT : receiptQuery.data;
 
-  const handleVerifyChain = useCallback(() => {
+  // Real chain verification: calls the transparency-log inclusion-proof API.
+  // The 'verified' badge is ONLY shown if the API returns a valid inclusion
+  // proof for this receipt digest. If the API is unreachable (demo mode, no
+  // backend), we show an honest 'preview' label — never a fake green tick.
+  const handleVerifyChain = useCallback(async () => {
     if (!receipt) return;
+    // Demo mode has no live backend — be honest about that.
+    if (demo) {
+      setChainStatus('preview');
+      return;
+    }
     setChainStatus('checking');
-    // In a real deployment, this calls the transparency log API.
-    // For now, we simulate: if the receipt has a digest, it verifies.
-    setTimeout(() => {
-      const digest = receipt.kernel_receipt_digest;
-      setChainStatus(digest ? 'verified' : 'broken');
-    }, 800);
-  }, [receipt]);
+    try {
+      const proof = await api.getInclusionProof(
+        TRANSPARENCY_LOG_ID,
+        receipt.kernel_receipt_digest,
+      );
+      // If the API returned a proof object with a checkpoint, the receipt
+      // digest is genuinely included in the transparency log.
+      if (proof && proof.proof && proof.checkpoint) {
+        setChainStatus('verified');
+      } else {
+        setChainStatus('broken');
+      }
+    } catch (err) {
+      // 404 = digest not found in log (genuinely broken / not yet appended).
+      // Network error = can't reach the verifier — don't claim verified.
+      if (err instanceof ApiError && err.status === 404) {
+        setChainStatus('broken');
+      } else {
+        // Can't reach the API — honest fallback, not a fake green.
+        setChainStatus('preview');
+      }
+    }
+  }, [receipt, demo]);
 
   if (!receiptId && !demo) {
     return (

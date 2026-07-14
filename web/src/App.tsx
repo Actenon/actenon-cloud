@@ -15,25 +15,37 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createBrowserRouter([
+const router = createBrowserRouter(
+  [
+    {
+      path: '/app',
+      element: <AppShell />,
+      errorElement: <RootErrorBoundary />,
+      children: [
+        { index: true, element: <TrustSurface /> },
+        { path: 'actions/:id', element: <TrustSurface /> },
+        { path: 'review', element: <ReviewQueue /> },
+        { path: 'ledger', element: <ActionLedger /> },
+        { path: 'styleguide', element: <Styleguide /> },
+      ],
+    },
+  ],
   {
-    path: '/app',
-    element: <AppShell />,
-    errorElement: <RootErrorBoundary />,
-    children: [
-      { index: true, element: <TrustSurface /> },
-      { path: 'actions/:id', element: <TrustSurface /> },
-      { path: 'review', element: <ReviewQueue /> },
-      { path: 'ledger', element: <ActionLedger /> },
-      { path: 'styleguide', element: <Styleguide /> },
-    ],
+    // Silence v7 future-flag warnings — opt in early.
+    future: {
+      v7_relativeSplatPath: true,
+    },
   },
-]);
+);
 
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <RouterProvider
+        router={router}
+        // Silence v7 future-flag warnings at the provider level.
+        future={{ v7_startTransition: true }}
+      />
     </QueryClientProvider>
   );
 }
