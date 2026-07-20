@@ -53,12 +53,16 @@ kernel is open and independently auditable at
 
 The current production limits are honestly documented in `BLOCKERS.md` and
 `SHIP_STATUS.md`. Key limitations:
-- Proof signing uses development-local HMAC (pilot_local_eddsa is available
-  but not yet the default in the live issuance path)
-- Capability release is still simulated — there is no real
-  protected-resource broker or production adapter release path in this repo
-- SSO, tenant isolation (row-level security), and automated deploy/rollback
-  are not yet implemented
+- Proof signing uses Ed25519 (dev-HMAC has been removed). Production boot
+  is refused without `ACTENON_KMS_ENDPOINT`; a real KMS backend must be
+  provisioned by the operator.
+- Capability release is real — the broker issues signed JWT-like capability
+  tokens via the permit-broker path. A real production adapter release path
+  requires operator-provisioned provider credentials.
+- OIDC is implemented but not yet tested end-to-end with a real OIDC issuer
+  (dev bearer is refused in production). Tenant isolation (Postgres RLS)
+  requires a managed PostgreSQL instance. Automated deploy/rollback is not
+  yet implemented.
 - The repo is **not production-ready** — it is credible as a supervised
   managed pilot, but not as a broad hosted cloud product
 
