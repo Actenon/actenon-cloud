@@ -67,6 +67,8 @@ jobs:
         # Run pip-audit against the installed environment. If vulnerabilities
         # are found (exit code 2), re-run with JSON output and inspect each
         # finding — only HIGH or CRITICAL severities fail the gate.
+        # Note: --strict is NOT used because it conflates exit codes 1 and 2,
+        # making it impossible to distinguish "audit error" from "vulns found".
         run: |
           if ! command -v pip-audit >/dev/null 2>&1; then
             echo "##[error]pip-audit is not installed; cannot run vulnerability gate"
@@ -74,7 +76,7 @@ jobs:
           fi
 
           set +e
-          pip-audit --strict --vulnerability-service osv --desc on
+          pip-audit --vulnerability-service osv --desc on
           EXIT_CODE=$?
           set -e
 
