@@ -9,6 +9,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv/action-control-plane
 
+# git is required because pyproject.toml has a git+https dependency on
+# actenon-kernel. python:3.12-slim does not ship git by default.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN python -m pip install --upgrade pip
 
 COPY pyproject.toml README.md alembic.ini ./
