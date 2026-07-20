@@ -40,12 +40,14 @@ jobs:
         # Generate a CycloneDX SBOM from the installed environment. Skipped
         # (rather than failed) if cyclonedx-bom is unavailable — the
         # vulnerability gate below is the hard gate.
+        # Note: cyclonedx-bom 7.x removed the `--force` flag; we remove the
+        # output file manually before generation to get equivalent behaviour.
         run: |
           if command -v cyclonedx-py >/dev/null 2>&1; then
+            rm -f sbom.cdx.json
             cyclonedx-py environment \
               --output-format json \
-              --output-file sbom.cdx.json \
-              --force
+              --output-file sbom.cdx.json
             echo "sbom=generated" >> "$GITHUB_OUTPUT"
           else
             echo "cyclonedx-py not installed — skipping SBOM generation"
