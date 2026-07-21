@@ -108,4 +108,14 @@ def test_cloud_ed25519_pccb_rejected_by_wrong_key(ed25519_keyfile):
     )
     with pytest.raises(ProofVerificationError) as exc_info:
         wrong_verifier.verify(intent, pccb, context)
-    assert exc_info.value.refusal_code == "SIGNATURE_INVALID"
+    # Assert on the canonical FailureCode (disclosure-policy-independent)
+    # rather than the raw refusal_code string. The kernel emits
+    # SIGNATURE_INVALID under trusted disclosure and PROOF_INVALID under
+    # public disclosure; both map to FailureCode.SIGNATURE_INVALID via
+    # refusal_code_to_failure_code. See actenon-protocol/protocol/11-disclosure-policy.md.
+    from actenon.outcomes import refusal_code_to_failure_code
+    fc = refusal_code_to_failure_code(exc_info.value.refusal_code)
+    assert fc == refusal_code_to_failure_code("SIGNATURE_INVALID"), (
+        f"expected FailureCode.SIGNATURE_INVALID (canonical), "
+        f"got {fc!r} for refusal_code {exc_info.value.refusal_code!r}"
+    )
