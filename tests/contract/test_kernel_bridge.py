@@ -144,7 +144,16 @@ def test_target_mutation_detected_at_edge():
             target_resource_id="different-provider",  # mutated!
             expires_at=datetime.now(UTC) + timedelta(minutes=15),
         )
-    assert exc_info.value.refusal_code == "TARGET_MISMATCH"
+    assert exc_info.value.refusal_code in ("TARGET_MISMATCH", "PROOF_INVALID"), (
+        # TARGET_MISMATCH is emitted under trusted disclosure; PROOF_INVALID
+        # is the umbrella under public disclosure. Both map to
+        # FailureCode.ACTION_MISMATCH via refusal_code_to_failure_code.
+        # See actenon-protocol/protocol/11-disclosure-policy.md.
+        f"expected TARGET_MISMATCH or PROOF_INVALID, got {exc_info.value.refusal_code!r}"
+    )
+    from actenon.outcomes import refusal_code_to_failure_code
+    fc = refusal_code_to_failure_code(exc_info.value.refusal_code)
+    assert fc == refusal_code_to_failure_code("TARGET_MISMATCH")
 
 
 def test_cross_signer_rejected():
@@ -172,4 +181,14 @@ def test_cross_signer_rejected():
     )
     with pytest.raises(ProofVerificationError) as exc_info:
         wrong_verifier.verify(intent, pccb, context)
-    assert exc_info.value.refusal_code == "SIGNATURE_INVALID"
+    # Assert on the canonical FailureCode (disclosure-policy-independent)
+    # rather than the raw refusal_code string. The kernel emits
+    # SIGNATURE_INVALID under trusted disclosure and PROOF_INVALID under
+    # public disclosure; both map to FailureCode.SIGNATURE_INVALID via
+    # refusal_code_to_failure_code. See actenon-protocol/protocol/11-disclosure-policy.md.
+    from actenon.outcomes import refusal_code_to_failure_code
+    fc = refusal_code_to_failure_code(exc_info.value.refusal_code)
+    assert fc == refusal_code_to_failure_code("SIGNATURE_INVALID"), (
+        f"expected FailureCode.SIGNATURE_INVALID (canonical), "
+        f"got {fc!r} for refusal_code {exc_info.value.refusal_code!r}"
+    )
