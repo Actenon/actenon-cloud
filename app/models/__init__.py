@@ -81,6 +81,9 @@ from app.models.escrow import (
 from app.models.escrow import (
     ExecutionState as ExecutionState,
 )
+from app.models.intent import (
+    AuthorisedExecutionIntentRecord as AuthorisedExecutionIntentRecord,
+)
 from app.models.issuance import (
     IssuedProof as IssuedProof,
 )
