@@ -1,0 +1,18 @@
+Copyright © 2026 Actenon. All rights reserved.
+
+This software and its source code are made available to authorised
+members of the Actenon organisation for internal development and
+evaluation purposes only.
+
+No license is granted to use, copy, modify, merge, publish, distribute,
+sublicense, or sell copies of this software or its source code, in whole
+or in part, without the prior written permission of Actenon.
+
+For commercial licensing enquiries, contact: legal@actenon.dev
+
+---
+
+Note: the other four Actenon repositories (actenon-protocol,
+actenon-kernel, actenon-permit, actenon-scan) are licensed under
+Apache-2.0. This repository is the commercial control plane and is
+not open-source.

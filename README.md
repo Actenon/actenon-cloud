@@ -49,7 +49,7 @@ Cloud does **NOT** define proof validity. The Kernel remains the verifier author
 - **NOT required for Scan** — Scan has zero dependencies.
 - **NOT required for the Boundary Kit** — middleware runs in-process at the resource boundary.
 - **NOT required for Kernel verification** — the Kernel is a zero-network-call library.
-- **NOT production-ready out of the box** — see [`PRODUCTION_INTEGRATION.md`](PRODUCTION_INTEGRATION.md) for exactly what to wire (KMS/HSM signing, Vault/KMS master key, OIDC IdP, S3/GCS evidence storage).
+- **NOT production-ready out of the box** — see [`PRODUCTION_INTEGRATION.md`](docs/PRODUCTION_INTEGRATION.md) for exactly what to wire (KMS/HSM signing, Vault/KMS master key, OIDC IdP, S3/GCS evidence storage).
 
 If your team can run Postgres and wire three secrets, you can run Cloud. If you cannot, you can still ship a protected agent with Permit alone.
 
@@ -85,7 +85,7 @@ Every endpoint is tenant-scoped. Permissions are explicit (`intent.approve`, `in
 | **Evidence** | 9 independent layers, each with its own SHA-256 hash, independently verifiable through `POST /api/v1/intents/{id}/evidence/verify`. |
 | **Audit** | Hash-chained ledger of every state transition. Tamper-evident — any modification breaks the chain. |
 
-See [`PRODUCTION_INTEGRATION.md`](PRODUCTION_INTEGRATION.md) for the exact wiring path for each layer.
+See [`PRODUCTION_INTEGRATION.md`](docs/PRODUCTION_INTEGRATION.md) for the exact wiring path for each layer.
 
 ## The 9-layer evidence bundle
 
@@ -118,7 +118,7 @@ Cloud refuses to green-light an action unless a cryptographically verified Recei
 | `refused` | A Refusal exists. The action did not execute. | Yes |
 | `outcome_unknown` | The provider call did not complete (timeout, network partition). Honest about not knowing. | Yes (with caveat) |
 
-There is no "assumed success" state. If Cloud cannot prove execution, it says so. See [`INSURER_CLARITY.md`](INSURER_CLARITY.md).
+There is no "assumed success" state. If Cloud cannot prove execution, it says so. See [`INSURER_CLARITY.md`](docs/INSURER_CLARITY.md).
 
 ## Insurer-facing clarity — three separate questions
 
@@ -160,7 +160,7 @@ What Cloud does NOT prove:
 - That the parameters (refund amount, issue title, role assignment) were the correct business decision.
 - That the person who requested the action was not themselves deceived, coerced, or acting maliciously within their authorised scope.
 
-**Cryptography does not prove business correctness.** It proves that the execution and authority processes were followed. A fraudulent actor with valid credentials and correct permissions can execute a "correct" (technically valid) action that is "wrong" (business-harmful). Cloud's value is that it makes the action traceable, replayable, and auditable — so the fraud can be detected after the fact — but it cannot prevent it. See [`INSURER_CLARITY.md`](INSURER_CLARITY.md) and [`docs/INSURER_PITCH.md`](../actenon-permit/docs/INSURER_PITCH.md).
+**Cryptography does not prove business correctness.** It proves that the execution and authority processes were followed. A fraudulent actor with valid credentials and correct permissions can execute a "correct" (technically valid) action that is "wrong" (business-harmful). Cloud's value is that it makes the action traceable, replayable, and auditable — so the fraud can be detected after the fact — but it cannot prevent it. See [`INSURER_CLARITY.md`](docs/INSURER_CLARITY.md) and [`docs/INSURER_PITCH.md`](../actenon-permit/docs/INSURER_PITCH.md).
 
 ## Readiness (truthful)
 
@@ -179,7 +179,7 @@ Cloud's readiness is tracked in a single source of truth: [`readiness.yaml`](rea
 | S3/GCS evidence storage | ❌ Stub (local filesystem) |
 | Multi-region | ❌ N/A (infrastructure concern) |
 
-See [`PRODUCTION_INTEGRATION.md`](PRODUCTION_INTEGRATION.md) for exactly what to wire to move from pilot-ready to production-ready.
+See [`PRODUCTION_INTEGRATION.md`](docs/PRODUCTION_INTEGRATION.md) for exactly what to wire to move from pilot-ready to production-ready.
 
 ## What's in this repo
 
@@ -194,15 +194,15 @@ See [`PRODUCTION_INTEGRATION.md`](PRODUCTION_INTEGRATION.md) for exactly what to
 | Resource-owned execution | [`app/services/resource_owned_execution.py`](app/services/resource_owned_execution.py) |
 | RLS migrations | [`migrations/versions/`](migrations/versions/) |
 | Readiness truth | [`readiness.yaml`](readiness.yaml) |
-| Production integration guide | [`PRODUCTION_INTEGRATION.md`](PRODUCTION_INTEGRATION.md) |
-| Insurer clarity | [`INSURER_CLARITY.md`](INSURER_CLARITY.md) |
-| Architecture | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
-| Deployment topology | [`DEPLOYMENT_TOPOLOGY.md`](DEPLOYMENT_TOPOLOGY.md) |
-| Containerization plan | [`CONTAINERIZATION_PLAN.md`](CONTAINERIZATION_PLAN.md) |
-| Customer handoff guide | [`CUSTOMER_HANDOFF_GUIDE.md`](CUSTOMER_HANDOFF_GUIDE.md) |
-| Customer incident flow | [`CUSTOMER_INCIDENT_FLOW.md`](CUSTOMER_INCIDENT_FLOW.md) |
-| Exception handling runbook | [`EXCEPTION_HANDLING_RUNBOOK.md`](EXCEPTION_HANDLING_RUNBOOK.md) |
-| Incident triage runbook | [`INCIDENT_TRIAGE_RUNBOOK.md`](INCIDENT_TRIAGE_RUNBOOK.md) |
+| Production integration guide | [`PRODUCTION_INTEGRATION.md`](docs/PRODUCTION_INTEGRATION.md) |
+| Insurer clarity | [`INSURER_CLARITY.md`](docs/INSURER_CLARITY.md) |
+| Architecture | [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Deployment topology | [`DEPLOYMENT_TOPOLOGY.md`](docs/DEPLOYMENT_TOPOLOGY.md) |
+| Containerization plan | [`CONTAINERIZATION_PLAN.md`](docs/CONTAINERIZATION_PLAN.md) |
+| Customer handoff guide | [`CUSTOMER_HANDOFF_GUIDE.md`](docs/CUSTOMER_HANDOFF_GUIDE.md) |
+| Customer incident flow | [`CUSTOMER_INCIDENT_FLOW.md`](docs/CUSTOMER_INCIDENT_FLOW.md) |
+| Exception handling runbook | [`EXCEPTION_HANDLING_RUNBOOK.md`](docs/EXCEPTION_HANDLING_RUNBOOK.md) |
+| Incident triage runbook | [`INCIDENT_TRIAGE_RUNBOOK.md`](docs/INCIDENT_TRIAGE_RUNBOOK.md) |
 
 ## Independence
 
