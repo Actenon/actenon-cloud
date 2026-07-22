@@ -1,0 +1,156 @@
+# Actenon Cloud Readiness Status
+# This is the single source of truth for public readiness statements.
+# Do NOT describe stubs as production-ready. Each component has a
+# truthful status: production_ready, pilot_ready, development_only,
+# or stub.
+
+version: "1.0"
+last_updated: "2026-07-22"
+
+components:
+  # ── Credential security ──────────────────────────────────────────
+  credential_encryption_at_rest:
+    status: production_ready
+    description: "AES-256-GCM encryption with per-tenant derived keys"
+    limitations:
+      - "Master key must be supplied by deployment (KMS/HSM/env var)"
+      - "In-process credential store is dev-only; production should use Vault/AWS Secrets Manager"
+
+  credential_tenant_isolation:
+    status: production_ready
+    description: "Per-tenant key derivation + Python-level access checks + RLS policies"
+
+  credential_rotation:
+    status: production_ready
+    description: "register() with same ref overwrites + increments key_version"
+
+  credential_revocation:
+    status: production_ready
+    description: "revoke() marks credential as revoked; resolve() raises CredentialRevoked"
+
+  credential_access_auditing:
+    status: production_ready
+    description: "Every read/rotate/revoke/list is recorded in credential_access_audit table"
+
+  # ── Signing ──────────────────────────────────────────────────────
+  signing_algorithm:
+    status: production_ready
+    description: "Ed25519 (EdDSA) for new keys; HS256 deprecated"
+    allow_list: ["EdDSA", "ES256", "RS256"]
+
+  signing_pilot_local_eddsa:
+    status: pilot_ready
+    description: "Real Ed25519 asymmetric signing via cryptography library"
+    limitations:
+      - "Private key lives on disk — NOT KMS/HSM"
+      - "Requires ACTENON_ALLOW_PILOT_LOCAL_EDDSA_IN_PRODUCTION=1 for production"
+      - "Pilot-grade only; design partners should migrate to KMS before GA"
+
+  signing_kms_hsm:
+    status: stub
+    description: "KMS/HSM signing backend interface exists but no cloud provider integration"
+    limitations:
+      - "No AWS KMS, GCP KMS, or Azure Key Vault integration"
+      - "No HSM integration (PKCS#11, etc.)"
+      - "Production deployments MUST wire a real KMS/HSM before GA"
+
+  signing_key_rotation:
+    status: production_ready
+    description: "SigningKeyReference model supports active/suspended/revoked/retired statuses"
+
+  signing_key_audit:
+    status: production_ready
+    description: "SigningOperationRecord tracks every signing operation"
+
+  # ── Execution workers ────────────────────────────────────────────
+  execution_durable_jobs:
+    status: production_ready
+    description: "Jobs persisted to execution_jobs table; survive process restarts"
+
+  execution_retry_policy:
+    status: production_ready
+    description: "Exponential backoff + jitter; max 3 retries by default"
+    limitations:
+      - "Retries are synchronous (no background task queue)"
+      - "Production should use Celery/RQ for async retries"
+
+  execution_idempotency:
+    status: production_ready
+    description: "idempotency_key deduplicates; duplicate submit returns original job"
+
+  execution_timeout:
+    status: production_ready
+    description: "Jobs marked as timed_out after timeout_seconds"
+
+  execution_reconciliation:
+    status: production_ready
+    description: "outcome_unknown triggers retry; recover_pending_jobs() recovers crashed jobs"
+
+  execution_dead_letter:
+    status: production_ready
+    description: "Exhausted retries -> dead_letter status; JobDeadLettered raised"
+
+  execution_cancellation:
+    status: production_ready
+    description: "cancel_job() transitions non-terminal jobs to cancelled"
+
+  execution_rate_limit_handling:
+    status: production_ready
+    description: "Provider 429/503 responses trigger retry with backoff"
+
+  execution_evidence_emission:
+    status: production_ready
+    description: "Every job emits an evidence record (structured log + DB record)"
+
+  # ── Tenant isolation ─────────────────────────────────────────────
+  rls_postgres:
+    status: production_ready
+    description: "Row-level security enabled on all tenant-scoped tables + AEI table"
+
+  rls_sqlite:
+    status: development_only
+    description: "SQLite test backend uses Python-level checks (no native RLS)"
+
+  # ── Authentication ───────────────────────────────────────────────
+  auth_bearer_token:
+    status: production_ready
+    description: "Bearer token authentication with tenant-scoped permissions"
+
+  auth_oidc:
+    status: stub
+    description: "OIDC integration not implemented"
+    limitations:
+      - "No external IdP integration (Auth0, Okta, etc.)"
+      - "Bootstrap token is dev-only"
+
+  # ── Evidence storage ─────────────────────────────────────────────
+  evidence_local_storage:
+    status: pilot_ready
+    description: "Local filesystem evidence storage"
+    limitations:
+      - "NOT durable production evidence storage"
+      - "Production should use S3/GCS with lifecycle policies"
+
+  # ── SDK transport ────────────────────────────────────────────────
+  sdk_python:
+    status: production_ready
+    description: "Python SDK v1.4.0 with sync + async APIs"
+
+  sdk_typescript:
+    status: production_ready
+    description: "TypeScript SDK v1.4.0 with discriminated result types"
+
+  # ── CLI ──────────────────────────────────────────────────────────
+  cli_unified:
+    status: production_ready
+    description: "Unified `actenon` CLI with demo, intent, verify, evidence commands"
+
+# ── Design-partner limitations ─────────────────────────────────────
+design_partner_limitations:
+  - "Signing is pilot_local_eddsa (real Ed25519, not KMS/HSM)"
+  - "Evidence storage is local filesystem (not S3/GCS)"
+  - "Execution retries are synchronous (no Celery/RQ)"
+  - "OIDC authentication is not implemented"
+  - "In-process credential store is dev-only (production should use Vault)"
+  - "No multi-region deployment support"
+  - "No automated backup/restore for the Cloud database"
