@@ -4,10 +4,10 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.9–3.12](https://img.shields.io/badge/Python-3.9%E2%80%933.12-blue.svg)](https://www.python.org/)
-[![API: REST v1](https://img.shields.io/badge/API-REST%20v1-13%20endpoints-blue.svg)](#api-surface)
+[![API: REST v1](https://img.shields.io/badge/API-REST%20v1-13%20endpoints-blue.svg)](#api-surface--13-endpoints)
 [![Evidence: 9 layers](https://img.shields.io/badge/Evidence-9%20layers-orange.svg)](#the-9-layer-evidence-bundle)
 [![Crypto: AES-256-GCM + Ed25519](https://img.shields.io/badge/Crypto-AES--256--GCM%20%2B%20Ed25519-red.svg)](#security-architecture)
-[![CI](https://github.com/Actenon/actenon-cloud/actions/workflows/ci.yml/badge.svg)](https://github.com/Actenon/actenon-cloud/actions)
+[![CI](https://github.com/Actenon/actenon-cloud/actions/workflows/ci.yml/badge.svg)](https://github.com/Actenon/actenon-cloud/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/Code%20style-ruff-black.svg)](https://docs.astral.sh/ruff/)
 [![Optional layer](https://img.shields.io/badge/Deployment-optional-2ea44f.svg)](#what-cloud-is-not)
 
