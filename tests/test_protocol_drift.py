@@ -28,7 +28,7 @@ from actenon_protocol.canonicalisation import canonicalize_json
 # 0. Pinned protocol version
 # ---------------------------------------------------------------------------
 
-EXPECTED_PROTOCOL_VERSION = "1.0.0"
+EXPECTED_PROTOCOL_VERSION = "1.1.0"
 
 
 def test_protocol_version_is_pinned():
@@ -36,14 +36,14 @@ def test_protocol_version_is_pinned():
 
 
 def test_pyproject_pins_protocol():
-    """pyproject.toml must pin actenon-protocol to v1.0.0."""
+    """pyproject.toml must pin actenon-protocol to v1.1.0."""
     import tomllib
     pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
     with pyproject.open("rb") as f:
         data = tomllib.load(f)
     deps = data["project"]["dependencies"]
-    assert any("actenon-protocol" in d and "v1.0.0" in d for d in deps), (
-        f"actenon-protocol @ v1.0.0 not pinned in dependencies: {deps}"
+    assert any("actenon-protocol" in d and "v1.1.0" in d for d in deps), (
+        f"actenon-protocol @ v1.1.0 not pinned in dependencies: {deps}"
     )
 
 

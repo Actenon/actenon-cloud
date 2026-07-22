@@ -1,0 +1,19 @@
+actenon-kernel[asymmetric] @ git+https://github.com/Actenon/actenon-kernel.git
+actenon-protocol @ git+https://github.com/Actenon/actenon-protocol.git@v1.1.0
+alembic<2.0,>=1.14
+fastapi<1.0,>=0.115
+jsonschema<5.0,>=4.23
+psycopg[binary]<4.0,>=3.2
+pydantic-settings<3.0,>=2.6
+python-multipart<1.0,>=0.0.18
+rfc8785<1.0,>=0.1.4
+sqlalchemy<3.0,>=2.0
+uvicorn<1.0,>=0.32
+
+[dev]
+actenon-kernel[asymmetric] @ git+https://github.com/Actenon/actenon-kernel.git
+build<2.0,>=1.2
+cryptography<49,>=42
+httpx<1.0,>=0.28
+pytest<10,>=9.0.3
+ruff<1.0,>=0.8
