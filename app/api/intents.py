@@ -689,6 +689,10 @@ def submit_intent(
             # Fall back to stub on bridge error.
 
     # No bridge configured — stub submission (for test/CI).
+    record.submission_reference = submission_reference
+    body = json.loads(record.body)
+    body["submission_reference"] = submission_reference
+    record.body = json.dumps(body, sort_keys=True, default=str)
     _transition_state(record, IntentLifecycle.SUBMITTED, session)
 
     return {
@@ -739,23 +743,165 @@ def get_evidence(
     session: Annotated[DatabaseSession, Depends(get_authenticated_db_session)],
     auth_session: Annotated[AuthenticatedSession, Depends(get_current_session)],
 ) -> dict[str, Any]:
-    """Retrieve the evidence bundle for an intent."""
+    """Retrieve the evidence bundle for an intent.
+
+    The bundle contains all 9 evidence layers as independent artefacts,
+    each with its own cryptographic hash. The bundle can be verified
+    independently without trusting the Cloud UI — see the /verify endpoint.
+    """
     record = session.get(AuthorisedExecutionIntentRecord, intent_id)
     if record is None:
         raise HTTPException(status_code=404, detail="intent not found")
     _validate_tenant_access(record, auth_session)
 
-    body = json.loads(record.body)
+    from app.services.evidence_bundle import EvidenceBundleService
+
+    service = EvidenceBundleService(session)
+    try:
+        bundle = service.build_bundle(intent_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="intent not found") from None
+    return bundle
+
+
+@router.post("/{intent_id}/evidence/verify", response_model=dict)
+def verify_evidence(
+    intent_id: str,
+    session: Annotated[DatabaseSession, Depends(get_authenticated_db_session)],
+    auth_session: Annotated[AuthenticatedSession, Depends(get_current_session)],
+) -> dict[str, Any]:
+    """Independently verify the evidence bundle for an intent.
+
+    Recomputes the hash of each artefact and checks it matches. This
+    can be done without trusting the Cloud UI — the caller can also
+    download the bundle via GET /evidence and verify it locally.
+    """
+    record = session.get(AuthorisedExecutionIntentRecord, intent_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="intent not found")
+    _validate_tenant_access(record, auth_session)
+
+    from app.services.evidence_bundle import EvidenceBundleService
+
+    service = EvidenceBundleService(session)
+    try:
+        bundle = service.build_bundle(intent_id)
+        result = service.verify_bundle(bundle)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="intent not found") from None
+    return result
+
+
+@router.get("/{intent_id}/outcome", response_model=dict)
+def get_outcome(
+    intent_id: str,
+    session: Annotated[DatabaseSession, Depends(get_authenticated_db_session)],
+    auth_session: Annotated[AuthenticatedSession, Depends(get_current_session)],
+) -> dict[str, Any]:
+    """Get the outcome state for an intent with honest distinctions.
+
+    For brokered mode, distinguishes:
+      - refused_before_execution
+      - executing
+      - succeeded
+      - failed
+      - outcome_unknown
+      - reconciled
+
+    For resource_owned mode, distinguishes:
+      - prepared
+      - submitted
+      - resource_accepted
+      - resource_refused
+      - receipt_awaited
+      - receipt_received
+      - receipt_verified
+      - succeeded
+      - failed
+      - outcome_unknown
+
+    NEVER displays a green "completed" state merely because submission
+    succeeded.
+    """
+    record = session.get(AuthorisedExecutionIntentRecord, intent_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="intent not found")
+    _validate_tenant_access(record, auth_session)
+
+    mode = record.requested_execution_mode
+    state = record.lifecycle_state
+
+    # Brokered outcome display
+    if mode == "brokered":
+        brokered_outcomes = {
+            "created": "prepared",
+            "evaluating": "evaluating",
+            "requires_approval": "awaiting_approval",
+            "authorised": "authorised",
+            "denied": "refused_before_execution",
+            "proof_issued": "ready_to_execute",
+            "executing": "executing",
+            "succeeded": "succeeded",
+            "failed": "failed",
+            "refused": "refused_before_execution",
+            "outcome_unknown": "outcome_unknown",
+            "cancelled": "cancelled",
+            "expired": "expired",
+        }
+        display_state = brokered_outcomes.get(state, state)
+        is_terminal = state in ("succeeded", "failed", "refused", "denied", "cancelled", "expired")
+        is_green = state == "succeeded"
+        return {
+            "intent_id": record.intent_id,
+            "execution_mode": "brokered",
+            "lifecycle_state": state,
+            "display_state": display_state,
+            "is_terminal": is_terminal,
+            "is_green": is_green,
+            "provider_execution_observed": state in ("succeeded", "failed"),
+            "receipt_verified": record.linked_receipt_id is not None,
+        }
+
+    # Resource-owned outcome display
+    resource_outcomes = {
+        "created": "prepared",
+        "evaluating": "prepared",
+        "requires_approval": "prepared",
+        "authorised": "prepared",
+        "denied": "resource_refused",
+        "proof_issued": "prepared",
+        "submitted": "submitted",
+        "succeeded": "succeeded",
+        "failed": "failed",
+        "refused": "resource_refused",
+        "outcome_unknown": "outcome_unknown",
+        "cancelled": "cancelled",
+        "expired": "expired",
+    }
+    display_state = resource_outcomes.get(state, state)
+
+    # Distinguish receipt states for resource-owned
+    if state == "submitted":
+        if record.linked_receipt_id is not None:
+            display_state = "receipt_verified"
+        elif record.submission_reference:
+            display_state = "receipt_awaited"
+        else:
+            display_state = "submitted"
+
+    is_terminal = state in ("succeeded", "failed", "refused", "denied", "cancelled", "expired")
+    is_green = state == "succeeded" and record.linked_receipt_id is not None
+
     return {
         "intent_id": record.intent_id,
-        "lifecycle_state": record.lifecycle_state,
-        "linked_proof_id": record.linked_proof_id,
-        "linked_attempt_ids": body.get("linked_attempt_ids", []),
-        "linked_receipt_id": record.linked_receipt_id,
-        "linked_refusal_id": record.linked_refusal_id,
+        "execution_mode": "resource_owned",
+        "lifecycle_state": state,
+        "display_state": display_state,
+        "is_terminal": is_terminal,
+        "is_green": is_green,
         "submission_reference": record.submission_reference,
-        "created_at": body.get("created_at"),
-        "expiry": body.get("expiry"),
+        "resource_receipt_received": record.linked_receipt_id is not None,
+        "resource_receipt_verified": record.linked_receipt_id is not None,
     }
 
 

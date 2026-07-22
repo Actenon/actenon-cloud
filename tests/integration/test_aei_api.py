@@ -273,9 +273,10 @@ def test_get_evidence(client: TestClient):
     resp = client.get(f"/api/v1/intents/{created['intent_id']}/evidence")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["intent_id"] == created["intent_id"]
-    assert body["lifecycle_state"] == "created"
-    assert body["linked_proof_id"] is None
+    # The evidence endpoint now returns a bundle structure (Prompt 16).
+    assert body["manifest"]["intent_id"] == created["intent_id"]
+    assert "artefacts" in body
+    assert "redaction_record" in body
 
 
 # ---------------------------------------------------------------------------
