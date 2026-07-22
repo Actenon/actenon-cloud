@@ -126,6 +126,28 @@ def get_current_session(
     return auth_session
 
 
+def get_authenticated_db_session(
+    request: Request,
+    container: Annotated[ApplicationContainer, Depends(get_container)],
+    auth_session: Annotated[AuthenticatedSession, Depends(get_current_session)],
+) -> Generator[Session, None, None]:
+    """Get a DB session with RLS context pre-set from the authenticated session.
+
+    This is the recommended dependency for endpoints that need both
+    authentication AND database access with tenant isolation. The RLS
+    context is set on the session before it's yielded to the endpoint.
+    """
+    with container.database.session() as session:
+        set_session_rls_context(
+            session,
+            tenant_ids=auth_session.tenant_ids,
+            principal_id=auth_session.principal_id,
+            is_platform_admin=auth_session.is_platform_admin,
+        )
+        request.state.db_session = session
+        yield session
+
+
 def get_escrow_service(
     session: Annotated[Session, Depends(get_db_session)],
     settings: Annotated[Settings, Depends(get_settings)],
