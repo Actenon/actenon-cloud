@@ -209,4 +209,6 @@ Cloud depends on [`actenon-kernel`](https://github.com/Actenon/actenon-kernel) +
 
 ## License
 
-Apache-2.0 — see [`LICENSE`](LICENSE).
+Source-available. See [`LICENSE`](LICENSE). This repository is published for
+transparency and evaluation; it does not grant a licence to use, copy, modify
+or redistribute. For commercial licensing, contact legal@actenon.dev.
