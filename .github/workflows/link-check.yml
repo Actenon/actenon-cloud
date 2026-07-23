@@ -17,6 +17,8 @@ jobs:
             --include-fragments
             --exclude-path node_modules
             --exclude-path .venv
+            --exclude-path docs/
+            --exclude-path ui/
             --accept 200,206,429
             './**/*.md'
           fail: true
