@@ -159,7 +159,7 @@ What Cloud does NOT prove:
 - That the parameters (refund amount, issue title, role assignment) were the correct business decision.
 - That the person who requested the action was not themselves deceived, coerced, or acting maliciously within their authorised scope.
 
-**Cryptography does not prove business correctness.** It proves that the execution and authority processes were followed. A fraudulent actor with valid credentials and correct permissions can execute a "correct" (technically valid) action that is "wrong" (business-harmful). Cloud's value is that it makes the action traceable, replayable, and auditable — so the fraud can be detected after the fact — but it cannot prevent it. See [`INSURER_CLARITY.md`](docs/INSURER_CLARITY.md) and [`docs/INSURER_PITCH.md`](../actenon-permit/docs/INSURER_PITCH.md).
+**Cryptography does not prove business correctness.** It proves that the execution and authority processes were followed. A fraudulent actor with valid credentials and correct permissions can execute a "correct" (technically valid) action that is "wrong" (business-harmful). Cloud's value is that it makes the action traceable, replayable, and auditable — so the fraud can be detected after the fact — but it cannot prevent it. See [`INSURER_CLARITY.md`](docs/INSURER_CLARITY.md) and [`docs/INSURER_PITCH.md`](https://github.com/Actenon/actenon-permit/blob/main/docs/INSURER_PITCH.md).
 
 ## Readiness (truthful)
 
