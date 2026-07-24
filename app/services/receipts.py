@@ -31,6 +31,7 @@ from app.models import (
     ReconciliationType,
 )
 from app.services.audit import AuditActor, AuditService
+from app.services.receipt_commitment import commit_receipt_index_fields
 
 workflow_logger = logging.getLogger("action_control_plane.workflow")
 
@@ -207,6 +208,14 @@ class ReceiptService:
             receipt_timestamp = self._parse_timestamp(kernel_receipt["occurred_at"])
             linked_ids = self._linked_workflow_ids(action_intent_record_id)
             receipt_index = self._build_receipt_index(action_intent, kernel_receipt)
+            # Fable 5 Part 3D follow-up: wire the commitment layer into
+            # receipt ingestion. PII-adjacent index fields (source_account_ref,
+            # destination_account_ref) get per-tenant HMAC-SHA256 commitments
+            # so the same account reference produces different hashes in
+            # different tenants. Prevents cross-tenant correlation.
+            receipt_index = commit_receipt_index_fields(
+                receipt_index, tenant_id=tenant_id
+            )
 
             receipt = ReceiptRecord(
                 receipt_id=uuid4().hex,
