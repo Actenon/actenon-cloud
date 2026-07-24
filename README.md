@@ -9,7 +9,7 @@
 [![Evidence: 9 layers](https://img.shields.io/badge/Evidence-9%20layers-orange.svg)](#the-9-layer-evidence-bundle)
 [![Crypto: AES-256-GCM + Ed25519](https://img.shields.io/badge/Crypto-AES--256--GCM%20%2B%20Ed25519-red.svg)](#security-architecture)
 [![Optional layer](https://img.shields.io/badge/Deployment-optional-2ea44f.svg)](#what-cloud-is-not)
-[![Claims: machine-verified](https://img.shields.io/badge/claims-machine--verified-2ea44f.svg)](https://github.com/Actenon/actenon-cloud/actions/workflows/verify-claims.yml)
+[![claims: machine-verified](https://img.shields.io/github/actions/workflow/status/Actenon/actenon-cloud/verify-claims.yml?branch=main&label=claims%3A%20machine-verified)](https://github.com/Actenon/actenon-cloud/actions/workflows/verify-claims.yml)
 
 ### Every claim above is machine-verified
 
