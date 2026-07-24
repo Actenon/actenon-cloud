@@ -9,6 +9,25 @@
 [![Evidence: 9 layers](https://img.shields.io/badge/Evidence-9%20layers-orange.svg)](#the-9-layer-evidence-bundle)
 [![Crypto: AES-256-GCM + Ed25519](https://img.shields.io/badge/Crypto-AES--256--GCM%20%2B%20Ed25519-red.svg)](#security-architecture)
 [![Optional layer](https://img.shields.io/badge/Deployment-optional-2ea44f.svg)](#what-cloud-is-not)
+[![Claims: machine-verified](https://img.shields.io/badge/claims-machine--verified-2ea44f.svg)](https://github.com/Actenon/actenon-cloud/actions/workflows/verify-claims.yml)
+
+### Every claim above is machine-verified
+
+The `claims: machine-verified` badge links to a CI gate
+([`verify-claims.yml`](.github/workflows/verify-claims.yml)) that fails on
+every PR and push to `main` if a factual claim this repo makes stops being
+true — most importantly the honesty of the readiness ratings:
+
+- **Production readiness stays Red until a PR says otherwise** — the gate
+  fails if `docs/CONTROL_PLANE_RELEASE_READINESS.md` is silently promoted;
+  moving out of Red requires editing the gate in the same PR, in the open.
+- **Known limitations stay acknowledged** — the bootstrap-admin backdoor and
+  the KMS custody status cannot be quietly deleted from the readiness doc.
+- **No console-script collision** — cloud never registers the `actenon` or
+  `actenon-kernel` binaries owned by sibling repos.
+
+If a claim drifts, the badge goes red before a human notices.
+
 
 ---
 

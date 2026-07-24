@@ -1,0 +1,100 @@
+name: Verify claims
+
+# Machine-enforce every claim the README and the readiness doc make.
+# Moved out of ci.yml so the README badge can link to a dedicated gate.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "37 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  verify-claims:
+    # Machine-enforce every claim the CONTROL_PLANE_RELEASE_READINESS.md makes.
+    # Fable 5 Part 3A/D: cloud's commercial value depends on the readiness doc
+    # being honest. Silently promoting out of Red would be the worst drift.
+    name: Verify README and readiness claims (machine-enforced)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify CONTROL_PLANE_RELEASE_READINESS.md ratings present
+        run: |
+          python -c "
+          import pathlib, sys
+          doc = pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text()
+          required = ['Internal development readiness', 'Design-partner pilot readiness', 'Production deployment readiness']
+          missing = [r for r in required if r not in doc]
+          if missing:
+              print(f'FAIL: missing readiness ratings: {missing}', file=sys.stderr)
+              sys.exit(1)
+          print('OK: all three readiness ratings present')
+          "
+
+      - name: Verify production readiness is still Red
+        # Fable 5 Part 3D: cloud must NOT be silently promoted out of Red.
+        # When cloud is genuinely production-ready, this gate must be
+        # updated explicitly as part of that PR.
+        run: |
+          python -c "
+          import pathlib, re, sys
+          doc = pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text()
+          m = re.search(r'\| Production deployment readiness \| (\w+) \|', doc)
+          if not m:
+              print('FAIL: Production deployment readiness row not found', file=sys.stderr)
+              sys.exit(1)
+          rating = m.group(1)
+          if rating != 'Red':
+              print(f'FAIL: Production readiness is {rating}, expected Red (Fable 5 Part 3D)', file=sys.stderr)
+              print('If cloud is genuinely production-ready, update this gate as part of the PR.', file=sys.stderr)
+              sys.exit(1)
+          print(f'OK: production readiness is {rating}')
+          "
+
+      - name: Verify bootstrap admin backdoor acknowledged
+        run: |
+          python -c "
+          import pathlib, sys
+          doc = pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text()
+          if 'bootstrap admin backdoor' not in doc.lower():
+              print('FAIL: bootstrap admin backdoor must be acknowledged in readiness doc (Fable 5 Part 3D)', file=sys.stderr)
+              sys.exit(1)
+          print('OK: bootstrap admin backdoor acknowledged')
+          "
+
+      - name: Verify KMS status acknowledged
+        run: |
+          python -c "
+          import pathlib, sys
+          doc = pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text()
+          if 'KMS' not in doc:
+              print('FAIL: KMS status must be acknowledged in readiness doc (Fable 5 Part 3C/D)', file=sys.stderr)
+              sys.exit(1)
+          print('OK: KMS status acknowledged')
+          "
+
+      - name: Verify no console-script collision
+        # Kernel owns `actenon-kernel`, permit owns `actenon`. Cloud must
+        # not register either (Fable 5 Part 3A).
+        run: |
+          python -c "
+          import tomllib, sys
+          with open('pyproject.toml','rb') as f:
+              data = tomllib.load(f)
+          scripts = data['project'].get('scripts', {})
+          for forbidden in ['actenon', 'actenon-kernel']:
+              if forbidden in scripts:
+                  print(f'FAIL: cloud must not register {forbidden} console script', file=sys.stderr)
+                  sys.exit(1)
+          print('OK: no console-script collision')
+          "
+
