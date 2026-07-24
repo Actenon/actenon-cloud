@@ -6,7 +6,6 @@ Tests use mock S3 clients — no real AWS calls are made.
 from __future__ import annotations
 
 import hashlib
-import os
 import unittest
 from unittest.mock import MagicMock
 
@@ -16,7 +15,6 @@ from app.services.evidence_backends import (
 )
 from app.services.s3_evidence import (
     S3EvidenceBackend,
-    TenantSalt,
     TenantSaltRegistry,
     get_default_salt_registry,
 )

@@ -43,7 +43,6 @@ from .evidence_backends import (
     StoredEvidenceArtifact,
 )
 
-
 # ---------------------------------------------------------------------------
 # Per-tenant salt management
 # ---------------------------------------------------------------------------
@@ -69,7 +68,7 @@ class TenantSalt:
         Returns a hex-encoded string suitable for storage in evidence
         records.
         """
-        h = hmac.new(self.salt, f"{field_name}:{field_value}".encode("utf-8"), hashlib.sha256)
+        h = hmac.new(self.salt, f"{field_name}:{field_value}".encode(), hashlib.sha256)
         return h.hexdigest()
 
 
