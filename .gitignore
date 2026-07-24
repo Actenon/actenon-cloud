@@ -38,3 +38,4 @@ var/
 logs/
 egg-info
 uv.lock
+actenon_cloud.egg-info/
