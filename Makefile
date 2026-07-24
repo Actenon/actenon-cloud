@@ -4,7 +4,45 @@ APP_MODULE ?= app.main:app
 COMPOSE_ENV_FILE ?= .env.compose
 DOCKER_COMPOSE ?= docker compose --env-file $(COMPOSE_ENV_FILE)
 
-.PHONY: install run test verify judge lint check package-check clean migrate-up migrate-revision container-build container-config container-db-up container-migrate container-up container-down container-logs container-ps container-verify
+.PHONY: install run test verify judge lint check package-check clean migrate-up migrate-revision container-build container-config container-db-up container-migrate container-up container-down container-logs container-ps container-verify verify-claims
+
+# Machine-verify every claim the README and CONTROL_PLANE_RELEASE_READINESS.md
+# make about cloud itself. Fable 5 Part 3A: for a trust product, one falsified
+# claim costs more than ten missing features.
+verify-claims:
+	@echo "==> Verifying CONTROL_PLANE_RELEASE_READINESS.md ratings present"
+	@python -c "import pathlib,sys; \
+	        doc=pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text(); \
+	        required = ['Internal development readiness', 'Design-partner pilot readiness', 'Production deployment readiness']; \
+	        missing = [r for r in required if r not in doc]; \
+	        sys.exit(1) if missing else print('OK: all three readiness ratings present')"
+	@echo "==> Verifying production readiness is still Red (not silently promoted)"
+	@python -c "import pathlib,re; \
+	        doc=pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text(); \
+	        m=re.search(r'\| Production deployment readiness \| (\w+) \|', doc); \
+	        assert m, 'Production deployment readiness row not found'; \
+	        rating=m.group(1); \
+	        assert rating == 'Red', f'Production readiness is {rating}, expected Red (Fable 5 Part 3D)'; \
+	        print(f'OK: production readiness is {rating}')"
+	@echo "==> Verifying bootstrap admin backdoor acknowledged in readiness doc"
+	@python -c "import pathlib,sys; \
+	        doc=pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text(); \
+	        assert 'bootstrap admin backdoor' in doc.lower() or 'Bootstrap admin backdoor' in doc, \
+	                'Bootstrap admin backdoor must be acknowledged in readiness doc (Fable 5 Part 3D)'; \
+	        print('OK: bootstrap admin backdoor acknowledged')"
+	@echo "==> Verifying KMS-not-yet-wired acknowledged in readiness doc"
+	@python -c "import pathlib,sys; \
+	        doc=pathlib.Path('docs/CONTROL_PLANE_RELEASE_READINESS.md').read_text(); \
+	        assert 'No real KMS' in doc or 'KMS' in doc, \
+	                'KMS status must be acknowledged in readiness doc (Fable 5 Part 3C/D)'; \
+	        print('OK: KMS status acknowledged')"
+	@echo "==> Verifying no kernel console-script collision (actenon-kernel renamed)"
+	@python -c "import tomllib,sys; \
+	        d=tomllib.load(open('pyproject.toml','rb')); \
+	        scripts=d['project'].get('scripts',{}); \
+	        assert 'actenon' not in scripts, 'Cloud must not register actenon console script (kernel owns actenon-kernel, permit owns actenon)'; \
+	        print('OK: no actenon console script collision')"
+	@echo "==> All cloud claims verified."
 
 install:
 	$(PIP) install --upgrade pip
