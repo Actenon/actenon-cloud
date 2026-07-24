@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -251,6 +252,18 @@ class AuthService:
         email: str,
         display_name: str,
     ) -> tuple[User, IssuedToken]:
+        # Fable 5 Part 3D: hard-disable the bootstrap admin backdoor when
+        # ACTENON_DISABLE_BOOTSTRAP_ADMIN=1 is set. This is an extra defense
+        # layer for production deployments that want to ensure the backdoor
+        # can NEVER be used, even if the environment is misconfigured as
+        # "local" or "test". The existing config guards already refuse the
+        # backdoor in production; this flag makes the refusal explicit and
+        # auditable.
+        if os.environ.get("ACTENON_DISABLE_BOOTSTRAP_ADMIN", "").lower() in ("1", "true", "yes"):
+            raise AuthValidationError(
+                "bootstrap admin is disabled by ACTENON_DISABLE_BOOTSTRAP_ADMIN; "
+                "use OIDC-based operator authentication instead"
+            )
         self._ensure_development_auth_enabled()
         self.ensure_system_roles()
         if bootstrap_token != self.settings.bootstrap_admin_token:
